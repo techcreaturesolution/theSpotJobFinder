@@ -1,0 +1,15 @@
+{
+  "name": "thespotjobfinder",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TheSpot JobFinder: verified Indian job search with Google sign-in, AdSense and video ads (MERN)",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "lint": "npm --prefix server run lint && npm --prefix client run lint",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix client run build",
+    "start": "NODE_ENV=production npm --prefix server start"
+  }
+}
