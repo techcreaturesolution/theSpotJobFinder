@@ -7,6 +7,7 @@ export const VERIFICATION_STATUSES = ['verified', 'unverified'];
 const jobPostingSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true },
+    dedupeKey: { type: String, index: true },
     origin: { type: String, enum: JOB_ORIGINS, default: 'aggregated', index: true },
     title: { type: String, required: true, trim: true },
     companyName: { type: String, trim: true, default: '' },

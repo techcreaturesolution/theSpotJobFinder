@@ -7,6 +7,7 @@ import { isAdLocked, publicAdGate } from '../models/adGate.js';
 import { JobSearch } from '../models/JobSearch.js';
 import { llmEnabled } from '../services/agent/llm.js';
 import { searchJobs } from '../services/jobs/aggregator.js';
+import { dedupeJobs } from '../services/jobs/dedupe.js';
 import { CATEGORY_KEYS, JOB_CATEGORIES } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS, EDUCATION_LEVELS } from '../services/jobs/education.js';
 import { INDIAN_STATES } from '../services/jobs/india.js';
@@ -95,7 +96,7 @@ router.get('/searches/:id', async (req, res) => {
   if (search.status === 'completed' && !isAdLocked(search) && search.jobs.length) {
     const docs = await JobPosting.find({ _id: { $in: search.jobs } }).select('-key -postedBy -__v').lean();
     const order = new Map(search.jobs.map((id, i) => [String(id), i]));
-    items = docs.sort((a, b) => order.get(String(a._id)) - order.get(String(b._id)));
+    items = dedupeJobs(docs.sort((a, b) => order.get(String(a._id)) - order.get(String(b._id))));
   }
   res.json({ search: serializeSearch(search), items });
 });

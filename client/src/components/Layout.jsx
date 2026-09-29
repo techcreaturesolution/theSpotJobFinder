@@ -1,6 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
-import AdSlot from './AdSlot.jsx';
 import GoogleAd from './GoogleAd.jsx';
 
 const linkCls = ({ isActive }) =>
@@ -26,13 +25,12 @@ export default function Layout() {
           </NavLink>
           {user?.role === 'admin' && (
             <NavLink to="/admin" className={linkCls}>
-              Admin · Ads, jobs &amp; users
+              Admin · Jobs &amp; users
             </NavLink>
           )}
         </nav>
         {showAds && (
           <div key={pathname} className="mt-6 space-y-4">
-            <AdSlot placement="sidebar" />
             <GoogleAd slot="sidebar" />
           </div>
         )}

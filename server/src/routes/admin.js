@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { Ad, AD_PLACEMENTS } from '../models/Ad.js';
 import { JOB_LEVELS, JobPosting } from '../models/JobPosting.js';
 import { JobSearch } from '../models/JobSearch.js';
 import { User } from '../models/User.js';
 import { CATEGORY_KEYS } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS } from '../services/jobs/education.js';
+import { identityKey, uniquePhones } from '../services/jobs/dedupe.js';
 import { extractPhones } from '../services/jobs/parse.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -17,23 +17,6 @@ const httpUrl = z
   .trim()
   .url()
   .refine((u) => /^https?:\/\//i.test(u), 'Must be an http(s) URL');
-
-const adSchema = z
-  .object({
-    advertiser: z.string().trim().min(1).max(100),
-    title: z.string().trim().min(1).max(120),
-    description: z.string().trim().max(300).optional().default(''),
-    imageUrl: z.union([httpUrl, z.literal('')]).optional(),
-    videoUrl: z.union([httpUrl, z.literal('')]).optional(),
-    targetUrl: httpUrl,
-    ctaText: z.string().trim().max(30).optional(),
-    placement: z.enum(AD_PLACEMENTS),
-    priority: z.coerce.number().min(0).max(100).default(0),
-    active: z.boolean().default(true),
-    startDate: z.union([z.null(), z.literal(''), z.coerce.date()]).optional(),
-    endDate: z.union([z.null(), z.literal(''), z.coerce.date()]).optional(),
-  })
-  .refine((d) => d.placement !== 'video' || d.videoUrl, { path: ['videoUrl'], message: 'Video ads need a video URL (MP4/WebM)' });
 
 const optionalUrl = z.union([httpUrl, z.literal('')]).default('');
 
@@ -66,7 +49,7 @@ function toPortalJob(d) {
     level: level || null,
     location: [d.city, d.state, 'India'].filter(Boolean).join(', '),
     emails: email ? [email.toLowerCase()] : [],
-    phones: phone ? (extractPhones(phone).length ? extractPhones(phone) : [phone]) : [],
+    phones: phone ? uniquePhones(extractPhones(phone).length ? extractPhones(phone) : [phone]) : [],
     platform: 'This portal',
     via: 'This portal',
     applyOptions: d.applyUrl ? [{ title: d.companyName, link: d.applyUrl }] : [],
@@ -75,64 +58,40 @@ function toPortalJob(d) {
   };
 }
 
-const clean = (d) => ({ ...d, startDate: d.startDate || null, endDate: d.endDate || null });
-
 router.get('/stats', async (_req, res) => {
-  const [users, ads, adAgg, jobs, portalJobs, jobSearches, applyAgg] = await Promise.all([
+  const [users, jobs, portalJobs, jobSearches, videoViews, applyAgg] = await Promise.all([
     User.countDocuments(),
-    Ad.countDocuments({ active: true }),
-    Ad.aggregate([{ $group: { _id: null, impressions: { $sum: '$impressions' }, clicks: { $sum: '$clicks' }, videoViews: { $sum: '$completedViews' } } }]),
     JobPosting.countDocuments(),
     JobPosting.countDocuments({ origin: 'portal' }),
     JobSearch.countDocuments(),
+    JobSearch.countDocuments({ 'adGate.required': true, 'adGate.completedAt': { $ne: null } }),
     JobPosting.aggregate([{ $group: { _id: null, clicks: { $sum: '$applyClicks' } } }]),
   ]);
-  res.json({
-    users,
-    activeAds: ads,
-    impressions: adAgg[0]?.impressions || 0,
-    clicks: adAgg[0]?.clicks || 0,
-    videoViews: adAgg[0]?.videoViews || 0,
-    jobs,
-    portalJobs,
-    jobSearches,
-    applyClicks: applyAgg[0]?.clicks || 0,
-  });
-});
-
-router.get('/ads', async (_req, res) => {
-  res.json({ items: await Ad.find().sort({ createdAt: -1 }).lean() });
-});
-
-router.post('/ads', async (req, res) => {
-  const ad = await Ad.create({ ...clean(adSchema.parse(req.body)), createdBy: req.user._id });
-  res.status(201).json({ ad });
-});
-
-router.put('/ads/:id', async (req, res) => {
-  const ad = await Ad.findByIdAndUpdate(req.params.id, clean(adSchema.parse(req.body)), { returnDocument: 'after', runValidators: true });
-  if (!ad) throw new HttpError(404, 'Ad not found');
-  res.json({ ad });
-});
-
-router.delete('/ads/:id', async (req, res) => {
-  const r = await Ad.deleteOne({ _id: req.params.id });
-  if (!r.deletedCount) throw new HttpError(404, 'Ad not found');
-  res.json({ ok: true });
+  res.json({ users, jobs, portalJobs, jobSearches, videoViews, applyClicks: applyAgg[0]?.clicks || 0 });
 });
 
 router.get('/jobs', async (_req, res) => {
   res.json({ items: await JobPosting.find({ origin: 'portal' }).select('-key').sort({ createdAt: -1 }).limit(500).lean() });
 });
 
+async function assertNotDuplicate(data, exceptId) {
+  const dedupeKey = identityKey(data);
+  const dup = dedupeKey && (await JobPosting.exists({ dedupeKey, origin: 'portal', active: true, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }));
+  if (dup) throw new HttpError(409, 'This job (same title, company and city) is already posted');
+  return dedupeKey;
+}
+
 router.post('/jobs', async (req, res) => {
   const data = toPortalJob(portalJobSchema.parse(req.body));
-  const job = await JobPosting.create({ ...data, key: `portal:${new mongoose.Types.ObjectId()}`, origin: 'portal', postedAt: new Date(), postedBy: req.user._id });
+  const dedupeKey = await assertNotDuplicate(data);
+  const job = await JobPosting.create({ ...data, dedupeKey, key: `portal:${new mongoose.Types.ObjectId()}`, origin: 'portal', postedAt: new Date(), postedBy: req.user._id });
   res.status(201).json({ job });
 });
 
 router.put('/jobs/:id', async (req, res) => {
-  const job = await JobPosting.findOneAndUpdate({ _id: req.params.id, origin: 'portal' }, toPortalJob(portalJobSchema.parse(req.body)), {
+  const data = toPortalJob(portalJobSchema.parse(req.body));
+  const dedupeKey = await assertNotDuplicate(data, req.params.id);
+  const job = await JobPosting.findOneAndUpdate({ _id: req.params.id, origin: 'portal' }, { ...data, dedupeKey }, {
     returnDocument: 'after',
     runValidators: true,
   });

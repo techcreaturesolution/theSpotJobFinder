@@ -5,8 +5,15 @@ const router = Router();
 
 router.get('/config', (_req, res) => {
   const { client, slots, testMode, demo } = env.adsense;
-  const { required, seconds, vastTag } = env.videoAd;
-  res.json({ client: client || null, slots, testMode, demo, video: { required, seconds, vastTag: Boolean(vastTag) } });
+  const { required, seconds, vastTag, demo: demoVideo } = env.videoAd;
+  res.json({
+    client: client || null,
+    slots,
+    testMode,
+    demo,
+    video: { required, seconds, vastTag: Boolean(vastTag), demo: demoVideo },
+    admob: env.admob,
+  });
 });
 
 export function adsTxt(_req, res) {

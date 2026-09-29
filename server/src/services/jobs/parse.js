@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { canonicalUrl, identityKey, normTitle } from './dedupe.js';
 import * as cheerio from 'cheerio';
 import { extractEmails } from '../emails.js';
 import { domainOf } from '../../utils/http.js';
@@ -139,15 +140,8 @@ export function extractContacts(...texts) {
   return { emails: extractEmails(deobfuscated), phones: extractPhones(text) };
 }
 
-const norm = (s) =>
-  String(s || '')
-    .toLowerCase()
-    .replace(/\b(pvt|private|ltd|limited|llp|inc|the)\b/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-
-export function jobKey({ title, companyName, location, applyUrl }) {
-  const base = companyName ? `${norm(title)}|${norm(companyName)}|${norm(String(location || '').split(',')[0])}` : `${norm(title)}|${applyUrl || ''}`;
+export function jobKey(job) {
+  const base = identityKey(job) || `${normTitle(job.title)}|${canonicalUrl(job.applyUrl || job.sourceUrl)}`;
   return crypto.createHash('sha1').update(base).digest('hex');
 }
 

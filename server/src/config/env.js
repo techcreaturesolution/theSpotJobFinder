@@ -17,6 +17,7 @@ export const env = {
   clientOrigins: list(process.env.CLIENT_ORIGIN || 'http://localhost:5173'),
 
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleMobileClientIds: (process.env.GOOGLE_MOBILE_CLIENT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean),
   allowedEmailDomains: list(process.env.ALLOWED_EMAIL_DOMAINS),
   adminEmails: list(process.env.ADMIN_EMAILS),
   devLoginEnabled: bool(process.env.DEV_LOGIN_ENABLED) && process.env.NODE_ENV !== 'production',
@@ -50,6 +51,12 @@ export const env = {
     seconds: Math.min(300, Math.max(5, Number(process.env.VIDEO_AD_SECONDS || 60))),
     exemptAdmins: bool(process.env.VIDEO_AD_EXEMPT_ADMINS, true),
     vastTag: /^https:\/\//.test(process.env.VIDEO_AD_VAST_TAG || '') ? process.env.VIDEO_AD_VAST_TAG : '',
+    demo: bool(process.env.VIDEO_AD_DEMO, true),
+  },
+
+  admob: {
+    android: { banner: process.env.ADMOB_ANDROID_BANNER_ID || '', rewarded: process.env.ADMOB_ANDROID_REWARDED_ID || '' },
+    ios: { banner: process.env.ADMOB_IOS_BANNER_ID || '', rewarded: process.env.ADMOB_IOS_REWARDED_ID || '' },
   },
 
   crawlTimeoutMs: Number(process.env.CRAWL_TIMEOUT_MS || 10000),

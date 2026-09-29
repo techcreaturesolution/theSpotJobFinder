@@ -1,9 +1,8 @@
-import mongoose from 'mongoose';
-
 export const adGateDefinition = {
   required: { type: Boolean, default: false },
   seconds: Number,
-  ad: { type: mongoose.Schema.Types.ObjectId, ref: 'Ad' },
+  method: { type: String, enum: ['watch', 'admob'] },
+  transactionId: String,
   watchedMs: { type: Number, default: 0 },
   lastBeatAt: Date,
   startedAt: Date,

@@ -13,9 +13,11 @@ Other features:
 
 - **Google (Gmail) sign-in.** The server verifies the Google ID token and issues an app JWT. Sign-in can be restricted to certain email domains, and admins are set by email.
 - **AI job agent (optional, OpenAI).** Turns the prompt into a search query and checks each listing against the text of its source page. It only keeps facts that appear word for word on that page.
-- **Google AdSense display ads** on user pages, plus sponsored ads managed in Admin.
-- **Mandatory 1-minute video ad before every search result.** Watch time is tracked on the server, so results stay locked until the ad has actually played.
-- **Admin panel** for ads (banner, sidebar, inline, video), portal jobs, users and stats.
+- **No duplicates, re-verified on every search.** Listings are merged when they share a title + company + city or a posting URL, and emails, phone numbers and apply links are de-duplicated after normalisation. Every search re-checks each listing against its source page; stored listings that were not re-checked in that search are not shown as verified.
+- **Google ads only.** Google AdSense display ads and Google video ads (IMA) on the web, Google AdMob banner and rewarded video ads in the mobile app. There is no admin form for creating or approving ads.
+- **Mandatory 1-minute video ad before every search result.** Watch time is tracked on the server, so results stay locked until the ad has actually played. In the app, an AdMob rewarded ad unlocks results once Google confirms the reward to the server.
+- **Flutter mobile app** (`mobile/`) for Android and iOS, using the same API.
+- **Admin panel** for portal jobs, users, stats and the Google ads status.
 
 ## Stack
 
@@ -28,6 +30,7 @@ Other features:
 ```
 server/   Express API  (src/routes, src/models, src/services/{jobs,sources,agent}, test/)
 client/   React app    (src/pages, src/components, src/lib)
+mobile/   Flutter app  (lib/screens, lib/widgets, test/) — see mobile/README.md
 ```
 
 ## Quick start
@@ -38,7 +41,6 @@ Requirements: Node 20+ and MongoDB 6+ (running locally, or a MongoDB Atlas URI).
 npm run install:all
 cp server/.env.example server/.env    # then edit values (see below)
 npm --prefix server run seed:jobs     # optional: 10 sample portal jobs
-npm --prefix server run seed:ads      # optional: 3 sample display ads
 npm run dev:server                    # http://localhost:5000
 npm run dev:client                    # http://localhost:5173  (proxies /api to :5000)
 ```
@@ -63,7 +65,9 @@ The app runs without any API keys. In that case search uses portal jobs, the rul
 | `ADSENSE_CLIENT_ID`, `ADSENSE_SLOT_{BANNER,SIDEBAR,INLINE,RAIL}` | AdSense publisher ID and display ad unit IDs |
 | `ADSENSE_TEST_MODE`, `ADSENSE_DEMO` | `data-adtest="on"`; show demo creatives in unconfigured slots (default `true`) |
 | `VIDEO_AD_REQUIRED`, `VIDEO_AD_SECONDS`, `VIDEO_AD_EXEMPT_ADMINS` | Video ad before every search result (default on, 60 s, admins exempt) |
-| `VIDEO_AD_VAST_TAG` | Optional VAST tag (Google Ad Manager / AdSense for video) played via the Google IMA SDK |
+| `VIDEO_AD_VAST_TAG`, `VIDEO_AD_DEMO` | Google video ad tag (AdSense for video / Ad Manager) played via the Google IMA SDK; demo video when unset (default `true`) |
+| `GOOGLE_MOBILE_CLIENT_IDS` | Extra Google OAuth client IDs accepted from the Flutter app |
+| `ADMOB_{ANDROID,IOS}_{BANNER,REWARDED}_ID` | AdMob ad units for the Flutter app |
 | `DAILY_JOB_SEARCH_LIMIT`, `JOB_ENRICH_LIMIT`, `JOB_SEARCH_BUDGET_MS`, `CRAWL_TIMEOUT_MS` | Limits / tuning |
 
 ### Google sign-in setup
@@ -95,14 +99,15 @@ To turn on real ads:
 
 1. `POST /api/jobs/search` saves the search and starts it in the background. The response already includes the search's **video ad gate**.
 2. The client plays the video ad and reports `play` / `tick` / `pause` / `complete` events to `/api/jobs/searches/:id/ad`. The server only counts time between heartbeats (at most 3 s per beat), so hiding the tab or pausing stops the timer. `complete` is rejected until `VIDEO_AD_SECONDS` have been watched. Ad source order:
-   1. `VIDEO_AD_VAST_TAG`
-   2. Admin ads with the **Video** placement
-   3. the bundled demo video
+   1. `VIDEO_AD_VAST_TAG` (Google ads are requested back to back until the time is reached)
+   2. the bundled demo video (`VIDEO_AD_DEMO`)
+
+   The Flutter app shows an AdMob rewarded ad instead when `ADMOB_*_REWARDED_ID` is set. AdMob calls `GET /api/admob/ssv` (server-side verification, signature checked against Google's keys, one use per transaction) and that unlocks the search. AdMob rewarded ads are usually 15–30 s.
 3. Meanwhile the **job agent**:
    - builds the query from the prompt, category, education and location;
    - searches the portal's own jobs, Google Jobs and `site:` web searches of the job boards, social sites and career pages;
    - normalises each result: experience level, education (10th, 12th, ITI, Diploma, graduate, B.E./B.Tech, B.Com, MBA, …), city/state and posted date;
-   - removes duplicates and merges their apply links.
+   - removes duplicates (same title + company + city, or the same posting URL) and merges their apply links, emails and phones without repeats.
 4. **Verification.** A job counts as verified if it is one of these:
    - a portal job;
    - a Google Jobs listing;
@@ -125,9 +130,9 @@ To turn on real ads:
 | `GET /api/jobs/searches` · `GET /api/jobs/searches/:id` | Search history · status and results (after the ad) |
 | `GET /api/jobs/searches/:id/ad` · `POST /api/jobs/searches/:id/ad` `{ event }` | Video ad for the search · watch-time events |
 | `GET /api/jobs/:id` · `POST /api/jobs/:id/apply` `{ link? }` | Job details · apply redirect URL (only stored links; click tracked) |
-| `GET /api/ads?placement=` · `POST /api/ads/:id/click` | Sponsored display ads |
-| `GET /api/adsense/config` · `GET /ads.txt` | AdSense / video ad config, ads.txt |
-| `/api/admin/{stats,ads,jobs,users}` | Admin |
+| `GET /api/adsense/config` · `GET /ads.txt` | AdSense / video ad / AdMob config, ads.txt |
+| `GET /api/admob/ssv` | AdMob rewarded-ad server-side verification callback |
+| `/api/admin/{stats,jobs,users}` | Admin |
 
 ## Scripts
 

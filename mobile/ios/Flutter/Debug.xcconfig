@@ -1,0 +1,5 @@
+#include "Generated.xcconfig"
+// Replace with your AdMob iOS app ID and Google iOS OAuth client for release builds.
+ADMOB_APP_ID=ca-app-pub-3940256099942544~1458002511
+GOOGLE_IOS_CLIENT_ID=
+GOOGLE_IOS_REVERSED_CLIENT_ID=com.googleusercontent.apps.replace-me

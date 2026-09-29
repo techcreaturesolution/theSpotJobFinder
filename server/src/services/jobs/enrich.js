@@ -5,6 +5,7 @@ import { categorizeEmail, extractEmails } from '../emails.js';
 import { detectEducation } from './education.js';
 import { detectExperience, extractContacts, extractJsonLdJobs, extractPhones, isJobBoardUrl, parsePostedAt } from './parse.js';
 import { lookupCompany } from './providers.js';
+import { uniqueEmails, uniquePhones } from './dedupe.js';
 import { agentExtract, CLOSED_RE, titleMatches, verification } from './verify.js';
 
 const NO_FETCH = /(^|\.)(google\.[a-z.]+|x\.com|twitter\.com|facebook\.com|instagram\.com|indeed\.com|glassdoor\.[a-z.]+)$/i;
@@ -138,8 +139,8 @@ export async function enrichJob(job, place) {
     }
   }
 
-  out.emails = rankEmails(out.emails).slice(0, 5);
-  out.phones = [...new Set(out.phones)].slice(0, 4);
+  out.emails = rankEmails(uniqueEmails(out.emails)).slice(0, 5);
+  out.phones = uniquePhones(out.phones).slice(0, 4);
   out.enrichedAt = new Date();
   return out;
 }

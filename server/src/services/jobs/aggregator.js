@@ -5,6 +5,7 @@ import { sleep } from '../../utils/http.js';
 import { llmEnabled, llmJson } from '../agent/llm.js';
 import { categoryByKey, detectCategory } from './categories.js';
 import { detectEducation, educationByKey, educationMatches, qualifyingKeys } from './education.js';
+import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
 import { enrichJob } from './enrich.js';
 import { splitLocation } from './india.js';
 import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, platformOf } from './parse.js';
@@ -75,8 +76,9 @@ function normalize(raw, plan) {
     city,
     state: loc.state || (city && city === plan.city ? plan.state : ''),
     platform: raw.platform || platformOf(raw.applyUrl),
-    emails: [...new Set([...(raw.emails || []), ...contacts.emails])],
-    phones: [...new Set([...(raw.phones || []), ...contacts.phones])],
+    applyOptions: uniqueLinks(raw.applyOptions),
+    emails: uniqueEmails([...(raw.emails || []), ...contacts.emails]),
+    phones: uniquePhones([...(raw.phones || []), ...contacts.phones]),
   };
 }
 
@@ -148,7 +150,11 @@ export async function searchJobs(input, log = () => {}) {
   if (db.status === 'rejected') log('warn', `DB search failed: ${db.reason?.message}`);
 
   const byKey = new Map();
-  for (const doc of db.status === 'fulfilled' ? db.value : []) byKey.set(doc.key, doc);
+  const recheck = new Map();
+  for (const doc of db.status === 'fulfilled' ? db.value : []) {
+    if (doc.origin === 'portal') byKey.set(doc.key, doc);
+    else recheck.set(doc.key, doc);
+  }
 
   const fresh = new Map();
   const raw = [...(google.status === 'fulfilled' ? google.value : []), ...(web.status === 'fulfilled' ? web.value : [])];
@@ -157,8 +163,9 @@ export async function searchJobs(input, log = () => {}) {
     if (!keep(job, plan, input.postedWithin)) continue;
     const prev = fresh.get(job.key);
     if (prev) {
-      const links = new Set(prev.applyOptions.map((o) => o.link));
-      prev.applyOptions.push(...(job.applyOptions || []).filter((o) => !links.has(o.link)));
+      prev.applyOptions = uniqueLinks([...prev.applyOptions, ...(job.applyOptions || [])]);
+      prev.emails = uniqueEmails([...prev.emails, ...job.emails]);
+      prev.phones = uniquePhones([...prev.phones, ...job.phones]);
       continue;
     }
     fresh.set(job.key, { ...job, applyOptions: job.applyOptions || [] });
@@ -168,29 +175,36 @@ export async function searchJobs(input, log = () => {}) {
   const existingByKey = new Map(existing.map((d) => [d.key, d]));
   for (const [key, job] of fresh) {
     const prev = existingByKey.get(key);
+    recheck.delete(key);
     if (prev?.origin === 'portal') {
       fresh.delete(key);
       byKey.set(key, prev);
       continue;
     }
-    if (prev?.verification?.status === 'verified' && job.verification?.status !== 'verified') job.verification = prev.verification;
-    if (prev?.enrichedAt && Date.now() - new Date(prev.enrichedAt).getTime() < 7 * DAY) {
-      for (const f of ENRICHED_FIELDS) if (prev[f] && (!job[f] || (Array.isArray(job[f]) && !job[f].length))) job[f] = prev[f];
-    }
-    byKey.delete(key);
+    if (prev) for (const f of ENRICHED_FIELDS) if (f !== 'verification' && prev[f] && (!job[f] || (Array.isArray(job[f]) && !job[f].length))) job[f] = prev[f];
+  }
+  // Stored listings found only in our DB must pass a fresh source check on every search too.
+  for (const [key, doc] of recheck) {
+    const job = Object.fromEntries(Object.entries(doc).filter(([k]) => !UNSTORED.has(k) || k === 'key'));
+    fresh.set(key, { ...job, verification: verification('unverified', 'search_result') });
   }
 
-  const toEnrich = [...fresh.values()]
-    .filter((j) => !j.enrichedAt)
-    .sort((a, b) => Number(a.verification?.status === 'verified') - Number(b.verification?.status === 'verified'))
-    .slice(0, env.jobEnrichLimit);
+  const unverifiedFirst = (a, b) => Number(a.verification?.status === 'verified') - Number(b.verification?.status === 'verified');
+  const toEnrich = [...fresh.values()].sort(unverifiedFirst).slice(0, env.jobEnrichLimit);
   const limit = pLimit(4);
   const expired = new Set();
+  const rechecked = new Set();
   await Promise.all(
     toEnrich.map((job) =>
       limit(async () => {
         if (Date.now() > deadline - 3000) return;
-        const enriched = await withDeadline(enrichJob(job, plan.place).catch(() => job), deadline - 1000, job);
+        const enriched = await withDeadline(
+          enrichJob(job, plan.place).catch(() => null),
+          deadline - 1000,
+          null,
+        );
+        if (!enriched) return;
+        rechecked.add(job.key);
         if (enriched.expired || !educationMatches(plan.education, enriched.education)) expired.add(job.key);
         fresh.set(job.key, { ...enriched, key: job.key });
       }),
@@ -202,16 +216,32 @@ export async function searchJobs(input, log = () => {}) {
     await JobPosting.bulkWrite(
       [...fresh.values()].map((j) => {
         const fields = Object.fromEntries(Object.entries(j).filter(([k]) => !UNSTORED.has(k)));
-        return { updateOne: { filter: { key: j.key }, update: { $set: { ...fields, active: !j.expired, lastSeenAt: now }, $setOnInsert: { origin: 'aggregated' } }, upsert: true } };
+        fields.dedupeKey = identityKey(j) || j.key;
+        fields.applyOptions = uniqueLinks(fields.applyOptions);
+        fields.emails = uniqueEmails(fields.emails);
+        fields.phones = uniquePhones(fields.phones);
+        const dbOnly = recheck.has(j.key);
+        if (dbOnly && !rechecked.has(j.key)) fields.verification = verification('unverified', 'not_rechecked');
+        return { updateOne: { filter: { key: j.key }, update: { $set: { ...fields, active: !j.expired, ...(dbOnly ? {} : { lastSeenAt: now }) }, $setOnInsert: { origin: 'aggregated' } }, upsert: true } };
       }),
       { ordered: false },
     );
   }
 
+  // A listing counts as verified in this search only if it was confirmed in this search.
+  const confirmed = (d) =>
+    d.origin === 'portal' || rechecked.has(d.key) || (fresh.get(d.key)?.verification?.status === 'verified' && !recheck.has(d.key));
   const keys = [...byKey.keys(), ...fresh.keys()].filter((k) => !expired.has(k));
-  const filter = { key: { $in: keys }, active: true, ...(input.verifiedOnly ? { 'verification.status': 'verified' } : {}) };
-  const docs = keys.length ? await JobPosting.find(filter).select('-key -postedBy -__v').lean() : [];
-  docs.sort((a, b) => rank(b, plan) - rank(a, plan));
-  const hidden = input.verifiedOnly ? keys.length - docs.length : 0;
-  return { plan, providers, items: docs.slice(0, MAX_RESULTS), hiddenUnverified: Math.max(0, hidden), durationMs: Date.now() - started };
+  const docs = keys.length ? await JobPosting.find({ key: { $in: keys }, active: true }).select('-postedBy -__v').lean() : [];
+  const portalIds = docs.filter((d) => d.origin === 'portal').map((d) => d._id);
+  if (portalIds.length) await JobPosting.updateMany({ _id: { $in: portalIds } }, { $set: { 'verification.checkedAt': now } });
+  const current = docs.map((d) => {
+    if (!confirmed(d)) return { ...d, verification: verification('unverified', 'not_rechecked') };
+    return d.origin === 'portal' ? { ...d, verification: { ...d.verification, checkedAt: now } } : d;
+  });
+  const unique = dedupeJobs(current, (j) => rank(j, plan));
+  const shown = input.verifiedOnly ? unique.filter((d) => d.verification?.status === 'verified') : unique;
+  const hidden = unique.length - shown.length;
+  const items = shown.slice(0, MAX_RESULTS).map(({ key: _key, ...d }) => d);
+  return { plan, providers, items, hiddenUnverified: hidden, durationMs: Date.now() - started };
 }
