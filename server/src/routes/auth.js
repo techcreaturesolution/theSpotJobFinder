@@ -17,17 +17,28 @@ function checkDomain(email) {
   }
 }
 
+export function roleFor(user) {
+  if (env.masterAdminEmails.includes(user.email)) return 'master';
+  if (user.role === 'master') return 'admin';
+  if (env.adminEmails.includes(user.email) && !user.roleManaged) return 'admin';
+  return user.role;
+}
+
 async function upsertUser({ email, name, picture, googleId }) {
   const normalized = email.toLowerCase();
-  const role = env.adminEmails.includes(normalized) ? 'admin' : undefined;
   const user = await User.findOneAndUpdate(
     { email: normalized },
     {
-      $set: { name, picture, lastLoginAt: new Date(), ...(googleId ? { googleId } : {}), ...(role ? { role } : {}) },
+      $set: { name, picture, lastLoginAt: new Date(), ...(googleId ? { googleId } : {}) },
       $setOnInsert: { email: normalized },
     },
     { upsert: true, returnDocument: 'after' },
   );
+  const role = roleFor(user);
+  if (role !== user.role) {
+    user.role = role;
+    await user.save();
+  }
   if (!user.active) throw new HttpError(403, 'Account disabled');
   return user;
 }

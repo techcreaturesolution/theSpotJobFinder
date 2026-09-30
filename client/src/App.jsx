@@ -4,12 +4,14 @@ import { useAuth } from './lib/auth.jsx';
 import Admin from './pages/Admin.jsx';
 import Jobs from './pages/Jobs.jsx';
 import Login from './pages/Login.jsx';
+import Master from './pages/Master.jsx';
 
-function Protected({ children, admin = false }) {
+function Protected({ children, admin = false, master = false }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="p-10 text-center text-slate-500">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (admin && user.role !== 'admin') return <Navigate to="/" replace />;
+  if (admin && !['admin', 'master'].includes(user.role)) return <Navigate to="/" replace />;
+  if (master && user.role !== 'master') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -31,6 +33,14 @@ export default function App() {
           element={
             <Protected admin>
               <Admin />
+            </Protected>
+          }
+        />
+        <Route
+          path="master"
+          element={
+            <Protected master>
+              <Master />
             </Protected>
           }
         />

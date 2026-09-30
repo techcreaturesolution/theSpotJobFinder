@@ -24,6 +24,11 @@ export async function requireAuth(req, _res, next) {
 }
 
 export function requireAdmin(req, _res, next) {
-  if (req.user?.role !== 'admin') throw new HttpError(403, 'Admin access required');
+  if (!['admin', 'master'].includes(req.user?.role)) throw new HttpError(403, 'Admin access required');
+  next();
+}
+
+export function requireMaster(req, _res, next) {
+  if (req.user?.role !== 'master') throw new HttpError(403, 'Master admin access required');
   next();
 }

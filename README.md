@@ -19,7 +19,14 @@ Other features:
 - **Flutter mobile app** (`mobile/`) for Android and iOS, using the same API.
 - **AI job posting.** In Admin → Jobs, paste a job advert (WhatsApp, X, LinkedIn, Facebook, newspaper or email text) or a job page link. The AI agent fills the job form using only facts written in the advert (several jobs in one post become several drafts). You review each draft and post it, or post all ready drafts at once. Without `OPENAI_API_KEY`, the job page's `JobPosting` data or pattern matching is used instead.
 - **AI auto-import (scheduled).** In Admin → AI auto-import, add rules (keywords, category, fresher/experienced, education, state, city, how often, max jobs per run). On schedule, the agent runs a verified search and posts the matching jobs to the portal automatically. It only posts jobs that were confirmed on their source page, are still open, and have a company name and an apply link or HR email. Jobs already on the portal (same title + company + city, or the same source page, including hidden ones) are skipped. On every search, each imported job's source page is checked again, and jobs that have closed are hidden.
-- **Admin panel** for portal jobs, AI import, users, stats and the Google ads status.
+- **Admin panel** for portal jobs, AI import, AI auto-import rules, a read-only user list, stats and the Google ads status.
+- **Master Admin** (emails in `MASTER_ADMIN_EMAILS`) sees everything an admin sees, plus a Master Admin page:
+  - **Overview:** users, blocked users, searches today, AI agent runs and jobs posted today, OpenAI and scheduler status.
+  - **Clients:** every user with searches today / total, AI runs today, last login and last search. Filter by role or status, see a user's recent searches, block or unblock them, make them admin or user, and set a personal daily search limit (empty = use the global limit, 0 = searching paused).
+  - **Limits & AI agents:** the global daily search limit, whether admins search without a limit, the OpenAI on/off switch, AI import on/off and daily limit per admin, AI auto-import on/off, daily run limit and daily job limit. "Run all rules now" starts every active auto-import rule.
+  - **Agent runs:** a log of every AI import and auto-import run (who or which rule, status, found / posted / duplicates / skipped, errors, time) with daily totals.
+
+  Days are counted from midnight India time (IST). Only the master admin can change roles, block users or change limits; admins cannot. Master admins cannot be demoted or blocked from the app, only by removing them from `MASTER_ADMIN_EMAILS`. The scheduler stops for the day once the daily run or job limit is reached; a master admin's manual runs are not counted against those limits, but the on/off switches still apply.
 
 ## Stack
 
@@ -58,7 +65,8 @@ The app runs without any API keys. In that case search uses portal jobs, the rul
 | `CLIENT_ORIGIN` | Allowed CORS origin(s), comma separated |
 | `GOOGLE_CLIENT_ID` | OAuth 2.0 **Web** client ID for Google sign-in |
 | `ALLOWED_EMAIL_DOMAINS` | Optional, e.g. `gmail.com` |
-| `ADMIN_EMAILS` | Emails that become admins |
+| `MASTER_ADMIN_EMAILS` | Emails that become master admins |
+| `ADMIN_EMAILS` | Emails that become admins on first sign-in (the master admin can change roles later) |
 | `DEV_LOGIN_ENABLED` | `true` for local email-only login (ignored in production) |
 | `SERPAPI_KEY` | Google Jobs (`engine=google_jobs`, India) and Google web search of job boards, social posts and career pages |
 | `GOOGLE_CSE_KEY`, `GOOGLE_CSE_CX` | Alternative web search (Google Programmable Search) |
@@ -135,6 +143,9 @@ To turn on real ads:
 | `GET /api/adsense/config` · `GET /ads.txt` | AdSense / video ad / AdMob config, ads.txt |
 | `GET /api/admob/ssv` | AdMob rewarded-ad server-side verification callback |
 | `/api/admin/{stats,jobs,users}` | Admin |
+| `GET /api/master/overview` · `GET/PUT /api/master/settings` | Master admin: dashboard · daily limits and AI switches |
+| `GET /api/master/users` · `PATCH /api/master/users/:id` `{ role?, active?, dailySearchLimit? }` · `GET /api/master/users/:id/searches` | Master admin: clients |
+| `GET /api/master/agent-runs?agent=&days=` · `POST /api/master/agents/auto-import/run` | Master admin: AI agent run log · run all active rules now |
 | `POST /api/admin/jobs/extract` `{ text?, url? }` | AI job posting: returns reviewable drafts (each has `missing`, `duplicate`, `closed`) |
 | `GET/POST /api/admin/auto-import` · `PUT/DELETE /api/admin/auto-import/:id` · `POST /api/admin/auto-import/:id/run` | AI auto-import rules · run a rule now |
 

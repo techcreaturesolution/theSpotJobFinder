@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import { env } from '../../config/env.js';
+import { AgentRun } from '../../models/AgentRun.js';
 import { AutoImportRule } from '../../models/AutoImportRule.js';
 import { JobPosting } from '../../models/JobPosting.js';
+import { autoImportAllowance } from '../limits.js';
 import { searchJobs } from './aggregator.js';
 import { CATEGORY_KEYS, detectCategory } from './categories.js';
 import { canonicalUrl, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
@@ -64,10 +66,25 @@ async function isDuplicate(job) {
   return or.length ? Boolean(await JobPosting.exists({ origin: 'portal', $or: or })) : false;
 }
 
-export async function runImportRule(rule, { postedBy } = {}) {
+function logRun(rule, { trigger, userId, status, stats, error, started }) {
+  return AgentRun.create({
+    agent: 'auto_import',
+    trigger,
+    rule: rule._id,
+    ruleName: rule.name,
+    user: userId,
+    status,
+    ...stats,
+    error: error ? String(error).slice(0, 300) : undefined,
+    durationMs: Date.now() - started,
+  }).catch((err) => console.error('[auto-import] run log failed', err));
+}
+
+export async function runImportRule(rule, { postedBy, trigger = 'schedule', userId, maxPosts = Infinity } = {}) {
   const started = Date.now();
   const stats = { found: 0, posted: 0, duplicates: 0, skipped: 0 };
   const postedIds = [];
+  const cap = Math.min(rule.maxJobs, maxPosts);
   try {
     const { items } = await searchJobs({
       prompt: rule.prompt,
@@ -82,7 +99,7 @@ export async function runImportRule(rule, { postedBy } = {}) {
     stats.found = items.length;
     const seen = new Set();
     for (const item of items) {
-      if (stats.posted >= rule.maxJobs) break;
+      if (stats.posted >= cap) break;
       const { job, reason } = importableJob(item, rule);
       if (!job) {
         stats[reason === 'already_portal' ? 'duplicates' : 'skipped'] += 1;
@@ -110,6 +127,7 @@ export async function runImportRule(rule, { postedBy } = {}) {
       { _id: rule._id },
       { $set: { lastRunAt: new Date(), lastRun: { status: 'completed', ...stats, durationMs: Date.now() - started } }, $unset: { runningSince: 1 }, $inc: { totalPosted: stats.posted } },
     );
+    await logRun(rule, { trigger, userId, status: 'completed', stats, started });
     return { status: 'completed', ...stats, postedIds };
   } catch (err) {
     console.error('[auto-import] rule failed', rule._id, err);
@@ -117,6 +135,7 @@ export async function runImportRule(rule, { postedBy } = {}) {
       { _id: rule._id },
       { $set: { lastRunAt: new Date(), lastRun: { status: 'failed', ...stats, error: String(err.message || err).slice(0, 300), durationMs: Date.now() - started } }, $unset: { runningSince: 1 } },
     );
+    await logRun(rule, { trigger, userId, status: 'failed', stats, error: err.message || err, started });
     return { status: 'failed', ...stats, postedIds, error: err.message };
   }
 }
@@ -136,9 +155,23 @@ async function tick() {
   const now = Date.now();
   for (const r of rules) {
     if (r.lastRunAt && new Date(r.lastRunAt).getTime() + r.everyHours * 3600_000 > now) continue;
+    const allowance = await autoImportAllowance();
+    if (!allowance.allowed) return;
     const rule = await claimRule({ _id: r._id, active: true });
-    if (rule) await runImportRule(rule);
+    if (rule) await runImportRule(rule, { maxPosts: allowance.remainingPosts });
   }
+}
+
+export async function runAllActiveRules({ userId, bypassLimits = false } = {}) {
+  const rules = await AutoImportRule.find({ active: true }).select('_id').lean();
+  const results = [];
+  for (const r of rules) {
+    const allowance = await autoImportAllowance({ bypassLimits });
+    if (!allowance.allowed) break;
+    const rule = await claimRule({ _id: r._id, active: true });
+    if (rule) results.push(await runImportRule(rule, { trigger: 'manual', userId, postedBy: userId, maxPosts: allowance.remainingPosts }));
+  }
+  return results;
 }
 
 export function startAutoImport() {
