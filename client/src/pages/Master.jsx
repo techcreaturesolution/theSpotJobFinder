@@ -45,7 +45,7 @@ function Overview({ data }) {
           hint={`${searches.savedHitsToday} of today's searches answered from saved results (no AI agent run)`}
         />
         <Stat label="Jobs stored" value={data.storedJobs} hint={`${data.closedJobs} closed or expired waiting for cleanup`} />
-        <Stat label="Closed jobs removed today" value={agents.cleanup.removed} hint={settings.cleanup?.enabled === false ? 'Automatic cleanup is off' : 'Cleanup runs every hour'} />
+        <Stat label="Closed jobs removed today" value={agents.cleanup.removed} hint={settings.cleanup?.enabled === false ? 'Automatic cleanup is off' : 'Cleanup runs once a day'} />
       </div>
       <p className="text-xs text-slate-500">Days start at midnight India time (IST).</p>
     </div>
@@ -304,7 +304,7 @@ function Limits({ overview, onSaved, setError }) {
     dailySearchLimit: overview.settings.dailySearchLimit,
     staffUnlimitedSearch: overview.settings.staffUnlimitedSearch,
     ai: { ...overview.settings.ai },
-    cache: { enabled: true, ttlHours: 12, ...overview.settings.cache },
+    cache: { enabled: true, ...overview.settings.cache },
     cleanup: { enabled: true, ...overview.settings.cleanup },
   }));
   const [saved, setSaved] = useState('');
@@ -383,11 +383,10 @@ function Limits({ overview, onSaved, setError }) {
         <h2 className="font-semibold">Saved search results</h2>
         <Toggle
           label="Reuse saved results"
-          hint="When someone repeats a search (e.g. new jobs in Ahmedabad), they get the saved jobs instead of a new AI agent run. Closed jobs are left out, and new portal jobs are added."
+          hint="When someone repeats a search (e.g. new jobs in Ahmedabad), they get the saved jobs instead of a new AI agent run. Each saved job stays until its last apply date passes or it closes; new portal jobs are added. The AI agent runs again only when every saved job for that search has closed."
           checked={cache.enabled}
           onChange={setGroup('cache', 'enabled')}
         />
-        <NumberField label="Keep results for (hours)" hint="After this the next search runs the AI agent and re-verifies every job. 1–168." value={cache.ttlHours} onChange={setGroup('cache', 'ttlHours')} />
         <button type="button" className="btn-secondary" onClick={clearSaved}>
           Clear saved results
         </button>
@@ -395,7 +394,7 @@ function Limits({ overview, onSaved, setError }) {
       <div className="card space-y-4">
         <h2 className="font-semibold">Closed jobs</h2>
         <Toggle
-          label="Delete closed and expired jobs every hour"
+          label="Delete closed and expired jobs once a day"
           hint="Removes jobs whose source page closed, whose last date passed, or that no job site has listed for 21 days. Jobs you hid yourself in Admin are kept."
           checked={cleanup.enabled}
           onChange={setGroup('cleanup', 'enabled')}

@@ -134,7 +134,7 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
     setFinishing(false);
   }, [send, endpoint, onUnlocked]);
 
-  const seconds = info?.seconds || 60;
+  const seconds = info?.seconds || 30;
 
   useEffect(() => {
     if (!playing) return;

@@ -249,7 +249,7 @@ export default function Jobs() {
             {!meta.providers.googleJobs && <span className="badge bg-amber-50 text-amber-700">Add SERPAPI_KEY to include Google Jobs</span>}
             <span className="badge bg-slate-100 text-slate-600">AI verification agent: {meta.ai === 'openai' ? 'OpenAI' : 'rules (add OPENAI_API_KEY)'}</span>
             <span>
-              · {meta.dailyLimit == null ? 'No daily search limit for your account' : `${meta.searchesToday} of ${meta.dailyLimit} searches used today`} · A 1-minute video ad plays with every search
+              · {meta.dailyLimit == null ? 'No daily search limit for your account' : `${meta.searchesToday} of ${meta.dailyLimit} searches used today`} · A 30-second video ad plays with every search
             </span>
           </div>
         )}
