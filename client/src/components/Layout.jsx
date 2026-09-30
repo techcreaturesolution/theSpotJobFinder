@@ -23,6 +23,9 @@ export default function Layout() {
           <NavLink to="/" end className={linkCls}>
             New Jobs
           </NavLink>
+          <NavLink to="/profile" className={linkCls}>
+            My profile
+          </NavLink>
           {['admin', 'master'].includes(user?.role) && (
             <NavLink to="/admin" className={linkCls}>
               Admin · Jobs &amp; AI import
@@ -61,6 +64,7 @@ export default function Layout() {
             <NavLink to="/" end>
               New Jobs
             </NavLink>
+            <NavLink to="/profile">Profile</NavLink>
             {['admin', 'master'].includes(user?.role) && <NavLink to="/admin">Admin</NavLink>}
             {user?.role === 'master' && <NavLink to="/master">Master</NavLink>}
             <button type="button" onClick={logout}>
