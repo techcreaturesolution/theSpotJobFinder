@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { openAd } from '../lib/ads.js';
 import { api, errMsg } from '../lib/api.js';
 import { playVastAd } from '../lib/ima.js';
 
 const FRAME_MS = 250;
 const TICK_MS = 2000;
+const RETRY_MS = 4000;
 
 export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job search is running. Watch the full ad to unlock the results.' }) {
   const videoRef = useRef(null);
@@ -21,6 +21,7 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
   const [muted, setMuted] = useState(true);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState('');
+  const [round, setRound] = useState(0);
 
   const send = useCallback((event) => api.post(endpoint, { event }).then((r) => r.data.adGate), [endpoint]);
 
@@ -41,10 +42,12 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
       .then(({ data }) => {
         if (!alive) return;
         if (data.adGate.completed) return onUnlocked();
-        setInfo({ ad: data.ad, seconds: data.adGate.seconds, vastTag: data.vastTag });
+        setInfo({ demo: data.demo, seconds: data.adGate.seconds, vastTag: data.vastTag });
         watchedRef.current = data.adGate.watchedSeconds;
         setWatched(data.adGate.watchedSeconds);
-        setMode(data.vastTag ? 'vast' : 'house');
+        if (data.vastTag) setMode('vast');
+        else if (data.demo) setMode('house');
+        else setError('Video ads are not configured. Please contact the site owner.');
       })
       .catch((e) => alive && setError(errMsg(e)));
     return () => {
@@ -60,19 +63,28 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
       video: videoRef.current,
       tagUrl: info.vastTag,
       onPlaying: setPlayingState,
-      onDone: () => !cancelled && setMode('house'),
+      // Google ads are usually shorter than the gate, so keep requesting ads until the watch time is reached.
+      onDone: (err) => {
+        if (cancelled || finishingRef.current) return;
+        if (err && info.demo) setMode('house');
+        else setTimeout(() => !cancelled && setRound((r) => r + 1), err ? RETRY_MS : 0);
+      },
     })
       .then((ctrl) => {
         if (cancelled) ctrl.destroy();
         else imaRef.current = ctrl;
       })
-      .catch(() => !cancelled && setMode('house'));
+      .catch(() => {
+        if (cancelled) return;
+        if (info.demo) setMode('house');
+        else setTimeout(() => !cancelled && setRound((r) => r + 1), RETRY_MS);
+      });
     return () => {
       cancelled = true;
       imaRef.current?.destroy();
       imaRef.current = null;
     };
-  }, [mode, info, setPlayingState]);
+  }, [mode, info, round, setPlayingState]);
 
   useEffect(() => {
     if (mode !== 'house') return;
@@ -153,8 +165,7 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
 
   const left = Math.max(0, Math.ceil(seconds - watched));
   const pct = Math.min(100, (watched / seconds) * 100);
-  const ad = info?.ad;
-  const houseSrc = mode === 'house' ? ad?.videoUrl : undefined;
+  const houseSrc = mode === 'house' ? info?.demo?.videoUrl : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-label="Sponsored video">
@@ -162,9 +173,9 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">
-              Sponsored video{ad?.advertiser && mode === 'house' ? ` · ${ad.advertiser}` : ''}
+              Sponsored video
             </div>
-            <div className="truncate text-sm font-semibold text-slate-900">{mode === 'house' ? ad?.title : mode === 'vast' ? 'Google video ad' : 'Loading ad…'}</div>
+            <div className="truncate text-sm font-semibold text-slate-900">{mode === 'house' ? info?.demo?.title : mode === 'vast' ? 'Google video ad' : 'Loading ad…'}</div>
           </div>
           <div className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-sm font-semibold text-white" data-testid="ad-countdown">
             {finishing ? 'Unlocking…' : `Results in ${left}s`}
@@ -209,11 +220,6 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
             <button type="button" className="btn-secondary px-3 py-1.5" onClick={toggleMute}>
               {muted ? 'Unmute' : 'Mute'}
             </button>
-            {mode === 'house' && ad?._id && ad.targetUrl && (
-              <button type="button" className="btn-primary px-3 py-1.5" onClick={() => openAd(ad)}>
-                {ad.ctaText || 'Learn more'}
-              </button>
-            )}
           </div>
         </div>
         {error && <div className="bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}

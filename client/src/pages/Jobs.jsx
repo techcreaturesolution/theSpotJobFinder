@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import AdSlot from '../components/AdSlot.jsx';
 import GoogleAd from '../components/GoogleAd.jsx';
 import JobsTable from '../components/JobsTable.jsx';
 import VideoAdGate from '../components/VideoAdGate.jsx';
@@ -253,7 +252,6 @@ export default function Jobs() {
         {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       </form>
 
-      <AdSlot placement="dashboard_banner" />
 
       {status === 'failed' && <div className="card border-red-200 bg-red-50 text-sm text-red-700">{current.search.error || 'The job search failed. Please try again.'}</div>}
       {searching && !locked && (

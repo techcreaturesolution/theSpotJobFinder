@@ -8,7 +8,7 @@ import { env } from './config/env.js';
 import { requireAdmin, requireAuth } from './middleware/auth.js';
 import { errorHandler, notFound } from './middleware/error.js';
 import adminRoutes from './routes/admin.js';
-import adRoutes from './routes/ads.js';
+import admobRoutes from './routes/admob.js';
 import adsenseRoutes, { adsTxt } from './routes/adsense.js';
 import authRoutes from './routes/auth.js';
 import jobRoutes from './routes/jobs.js';
@@ -25,12 +25,14 @@ export function createApp() {
   app.get('/ads.txt', adsTxt);
   app.use('/api/auth', authRoutes);
   app.use('/api/adsense', adsenseRoutes);
+  app.use('/api/admob', admobRoutes);
   app.use('/api/jobs', requireAuth, jobRoutes);
-  app.use('/api/ads', requireAuth, adRoutes);
   app.use('/api/admin', requireAuth, requireAdmin, adminRoutes);
   app.use('/api', notFound);
 
   const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+  const clientPublic = path.resolve(clientDist, '../public');
+  app.get('/demo-video-ad.mp4', (_req, res) => res.sendFile(path.join(clientPublic, 'demo-video-ad.mp4')));
   if (env.nodeEnv === 'production') {
     app.use(express.static(clientDist));
     app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));

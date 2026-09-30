@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { connectDb } from '../src/config/db.js';
 import { JobPosting } from '../src/models/JobPosting.js';
+import { identityKey } from '../src/services/jobs/dedupe.js';
 
 const days = (n) => new Date(Date.now() - n * 86400_000);
 
@@ -23,6 +24,7 @@ if ((await JobPosting.countDocuments({ origin: 'portal' })) === 0) {
     samples.map((j, i) => ({
       ...j,
       key: `portal:sample-${i}`,
+      dedupeKey: identityKey(j),
       origin: 'portal',
       location: `${j.city}, ${j.state}, India`,
       platform: 'This portal',

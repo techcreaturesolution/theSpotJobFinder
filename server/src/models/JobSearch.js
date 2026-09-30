@@ -26,4 +26,6 @@ const jobSearchSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+jobSearchSchema.index({ 'adGate.transactionId': 1 }, { unique: true, sparse: true });
+
 export const JobSearch = mongoose.model('JobSearch', jobSearchSchema);

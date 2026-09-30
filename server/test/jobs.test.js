@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import crypto from 'node:crypto';
 import { isAdLocked, publicAdGate } from '../src/models/adGate.js';
+import { verifySsv } from '../src/services/admobSsv.js';
+import { canonicalUrl, dedupeJobs, uniqueEmails, uniquePhones } from '../src/services/jobs/dedupe.js';
 import { detectCategory } from '../src/services/jobs/categories.js';
 import { detectEducation, educationMatches, qualifyingKeys } from '../src/services/jobs/education.js';
 import { splitLocation } from '../src/services/jobs/india.js';
@@ -131,4 +134,35 @@ test('ad gate locks a search until the video ad is completed', () => {
   assert.equal(isAdLocked({ adGate: { required: true, seconds: 60, completedAt: new Date() } }), false);
   assert.equal(isAdLocked({}), false);
   assert.deepEqual(publicAdGate({ adGate: { required: true, seconds: 60, watchedMs: 12500 } }), { required: true, seconds: 60, watchedSeconds: 12, completed: false });
+});
+
+test('removes duplicate jobs, links, emails and phones', () => {
+  const jobs = [
+    { title: 'Urgent Hiring: Python Developer (Fresher)', companyName: 'Acme Pvt Ltd', city: 'Ahmedabad', applyUrl: 'https://naukri.com/job/1?utm_source=x', emails: ['HR@acme.in'], phones: ['9876543210'], score: 1 },
+    { title: 'Python Developer', companyName: 'ACME', location: 'Ahmedabad, Gujarat', applyUrl: 'https://www.linkedin.com/jobs/view/9', emails: ['hr@acme.in'], phones: ['+91-98765-43210'], score: 5 },
+    { title: 'Accounts Executive', companyName: 'Beta', city: 'Surat', applyUrl: 'https://www.naukri.com/job/1', score: 2 },
+    { title: 'Accounts Executive', companyName: 'Gamma', city: 'Pune', applyUrl: 'https://gamma.in/careers/ae', score: 0 },
+    { title: 'Accountant', companyName: '', sourceUrl: 'https://gamma.in/careers/ae/?ref=x', score: -1 },
+  ];
+  const out = dedupeJobs(jobs, (j) => j.score);
+  assert.equal(out.length, 3);
+  assert.equal(out.filter((j) => j.companyName === 'Gamma').length, 1);
+  const py = out.find((j) => j.companyName === 'ACME');
+  assert.deepEqual(py.emails, ['hr@acme.in']);
+  assert.deepEqual(py.phones, ['+91 98765 43210']);
+  assert.equal(out.some((j) => j.companyName === 'Beta'), true);
+  assert.equal(canonicalUrl('https://WWW.Naukri.com/job/1/?utm_medium=a#x'), canonicalUrl('https://naukri.com/job/1'));
+  assert.deepEqual(uniqueEmails(['A@b.in', 'a@b.in ']), ['a@b.in']);
+  assert.deepEqual(uniquePhones(['098765 43210', '+919876543210', '079-2658 1234']), ['+91 98765 43210', '079-2658 1234']);
+});
+
+test('verifies AdMob server-side verification signatures', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const pem = publicKey.export({ type: 'spki', format: 'pem' });
+  const keys = new Map([['42', pem]]);
+  const msg = 'ad_network=5450213213286189855&ad_unit=123&custom_data=abc&reward_amount=1&reward_item=unlock&timestamp=1700000000000&transaction_id=t1&user_id=u1';
+  const sig = crypto.sign('sha256', Buffer.from(msg), privateKey).toString('base64url');
+  assert.equal(verifySsv(`${msg}&signature=${sig}&key_id=42`, keys).custom_data, 'abc');
+  assert.equal(verifySsv(`${msg.replace('abc', 'xyz')}&signature=${sig}&key_id=42`, keys), null);
+  assert.equal(verifySsv(`${msg}&signature=${sig}&key_id=7`, keys), null);
 });
