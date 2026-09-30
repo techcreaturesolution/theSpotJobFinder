@@ -12,6 +12,7 @@ Each row lists the job description, company, address, public email and phone, sa
 Other features:
 
 - **Google (Gmail) sign-in.** The server verifies the Google ID token and issues an app JWT. Sign-in can be restricted to certain email domains, and admins are set by email.
+- **Client profile.** After the first Google sign-in, each job seeker must fill in their full name, a 10-digit Indian mobile number, state, city, fresher/experienced and highest education before they can search (the server enforces this). Email comes from Google. One mobile number can belong to only one account. Seekers can edit it later under My profile.
 - **AI job agent (optional, OpenAI).** Turns the prompt into a search query and checks each listing against the text of its source page. It only keeps facts that appear word for word on that page.
 - **No duplicates, re-verified on every search.** Listings are merged when they share a title + company + city or a posting URL, and emails, phone numbers and apply links are de-duplicated after normalisation. Every search re-checks each listing against its source page; stored listings that were not re-checked in that search are not shown as verified.
 - **Google ads only.** Google AdSense display ads and Google video ads (IMA) on the web, Google AdMob banner and rewarded video ads in the mobile app. There is no admin form for creating or approving ads.
@@ -22,8 +23,8 @@ Other features:
 - **Admin panel** for portal jobs, AI import, AI auto-import rules, a read-only user list, stats and the Google ads status.
 - **Master Admin** (emails in `MASTER_ADMIN_EMAILS`) sees everything an admin sees, plus a Master Admin page:
   - **Overview:** users, blocked users, searches today, AI agent runs and jobs posted today, OpenAI and scheduler status.
-  - **Clients:** every user with searches today / total, AI runs today, last login and last search. Filter by role or status, see a user's recent searches, block or unblock them, make them admin or user, and set a personal daily search limit (empty = use the global limit, 0 = searching paused).
-  - **Limits & AI agents:** the global daily search limit, whether admins search without a limit, the OpenAI on/off switch, AI import on/off and daily limit per admin, AI auto-import on/off, daily run limit and daily job limit. "Run all rules now" starts every active auto-import rule.
+  - **Clients:** every user with their name, email, mobile, city and state, fresher/experienced and education, searches today / total, AI runs today, last login and last search. Search by name, email, mobile or city, filter by role, status or profile completeness, download everyone as a CSV (Excel) file, see a user's recent searches, block or unblock them, make them admin or user, and set a personal daily search limit (empty = use the global limit, 0 = searching paused).
+  - **Limits & AI agents:** the global daily search limit (5 per client per day by default), whether admins search without a limit, the OpenAI on/off switch, AI import on/off and daily limit per admin, AI auto-import on/off, daily run limit and daily job limit. "Run all rules now" starts every active auto-import rule.
   - **Saved search results:** every completed search is saved. When anyone repeats it (same keywords in any order and wording, level, category, education, state/city, posted-within), they get the saved jobs without a new AI agent run. Saved results have no time limit: each job stays until its last apply date passes, its source page is found closed, or (for jobs with no last date) no job site has listed it for 21 days. Portal jobs posted after the save are added. The AI agent runs again for that search only when all its saved jobs have closed. "Clear saved results" forces fresh runs.
   - **Closed jobs:** once a day (the first check after midnight IST, and at server start if it has not run that day) the server deletes jobs whose source page closed, whose last date passed, or that no provider has listed for 21 days, removes them from saved results and search history, and drops saved searches with no jobs left. Portal jobs an admin hid by hand are kept. "Remove closed jobs now" runs it at once; each run is logged under Agent runs.
   - **Agent runs:** a log of every AI import and auto-import run (who or which rule, status, found / posted / duplicates / skipped, errors, time) with daily totals.
@@ -136,7 +137,7 @@ To turn on real ads:
 
 | Method & path | Description |
 |---------------|-------------|
-| `GET /api/auth/config` · `POST /api/auth/google` · `GET /api/auth/me` | Auth |
+| `GET /api/auth/config` · `POST /api/auth/google` · `GET /api/auth/me` · `PUT /api/auth/profile` `{ name, phone, state, city, level, education }` | Auth · client profile |
 | `GET /api/jobs/meta` | Categories, education levels, states, providers |
 | `POST /api/jobs/search` `{ level, prompt, category, education, state, city, postedWithin, verifiedOnly }` | Start a job search |
 | `GET /api/jobs/searches` · `GET /api/jobs/searches/:id` | Search history · status and results (after the ad) |
@@ -146,7 +147,7 @@ To turn on real ads:
 | `GET /api/admob/ssv` | AdMob rewarded-ad server-side verification callback |
 | `/api/admin/{stats,jobs,users}` | Admin |
 | `GET /api/master/overview` · `GET/PUT /api/master/settings` | Master admin: dashboard · daily limits and AI switches |
-| `GET /api/master/users` · `PATCH /api/master/users/:id` `{ role?, active?, dailySearchLimit? }` · `GET /api/master/users/:id/searches` | Master admin: clients |
+| `GET /api/master/users?q=&role=&status=&profile=` · `GET /api/master/users.csv` (same filters) · `PATCH /api/master/users/:id` `{ role?, active?, dailySearchLimit? }` · `GET /api/master/users/:id/searches` | Master admin: clients |
 | `GET /api/master/agent-runs?agent=&days=` · `POST /api/master/agents/auto-import/run` | Master admin: AI agent run log · run all active rules now |
 | `GET/DELETE /api/master/saved-searches` · `POST /api/master/agents/cleanup/run` | Master admin: saved search results · remove closed jobs now |
 | `POST /api/admin/jobs/extract` `{ text?, url? }` | AI job posting: returns reviewable drafts (each has `missing`, `duplicate`, `closed`) |

@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../widgets/banner_ad.dart';
 import 'history_screen.dart';
+import 'profile_screen.dart';
 import 'search_run_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -92,6 +93,12 @@ class _SearchScreenState extends State<SearchScreen> {
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const HistoryScreen())),
+          ),
+          IconButton(
+            tooltip: 'My profile',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
           ),
           IconButton(
             tooltip: 'Logout',

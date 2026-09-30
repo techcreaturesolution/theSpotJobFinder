@@ -10,8 +10,11 @@ import { User } from '../models/User.js';
 import { llmConfigured } from '../services/agent/llm.js';
 import { runAllActiveRules } from '../services/jobs/autoImport.js';
 import { closedJobFilter, removeClosedJobs } from '../services/jobs/cleanup.js';
+import { educationByKey } from '../services/jobs/education.js';
 import { effectiveSearchLimit, startOfDay } from '../services/limits.js';
+import { isProfileComplete } from '../services/profile.js';
 import { getSettings, updateSettings } from '../services/settings.js';
+import { csvCell } from '../utils/csv.js';
 import { HttpError } from '../utils/httpError.js';
 
 const router = Router();
@@ -102,42 +105,89 @@ router.put('/settings', async (req, res) => {
   res.json({ settings: await updateSettings(settingsSchema.parse(req.body), req.user._id) });
 });
 
-router.get('/users', async (req, res) => {
-  const q = z
-    .object({ q: z.string().trim().max(100).default(''), role: z.enum(['', 'user', 'admin', 'master']).default(''), status: z.enum(['', 'active', 'blocked']).default('') })
-    .parse(req.query);
-  const filter = {};
+const clientQuery = z.object({
+  q: z.string().trim().max(100).default(''),
+  role: z.enum(['', 'user', 'admin', 'master']).default(''),
+  status: z.enum(['', 'active', 'blocked']).default(''),
+  profile: z.enum(['', 'complete', 'incomplete']).default(''),
+});
+
+const PROFILE_DONE = { name: { $nin: [null, ''] }, phone: { $type: 'string' }, state: { $nin: [null, ''] }, city: { $nin: [null, ''] }, level: { $nin: [null, ''] }, education: { $nin: [null, ''] } };
+
+async function listClients(query, max) {
+  const q = clientQuery.parse(query);
+  const and = [];
   if (q.q) {
     const rx = new RegExp(q.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    filter.$or = [{ email: rx }, { name: rx }];
+    const digits = q.q.replace(/\D/g, '');
+    and.push({ $or: [{ email: rx }, { name: rx }, { city: rx }, { state: rx }, ...(digits.length >= 3 ? [{ phone: new RegExp(digits) }] : [])] });
   }
-  if (q.role) filter.role = q.role;
-  if (q.status) filter.active = q.status === 'active';
+  if (q.role) and.push({ role: q.role });
+  if (q.status) and.push({ active: q.status === 'active' });
+  if (q.profile === 'complete') and.push(PROFILE_DONE);
+  if (q.profile === 'incomplete') and.push({ $nor: [PROFILE_DONE] });
   const [users, settings, today, total, extracts] = await Promise.all([
-    User.find(filter).sort({ createdAt: -1 }).limit(1000).lean(),
+    User.find(and.length ? { $and: and } : {}).sort({ createdAt: -1 }).limit(max).lean(),
     getSettings(),
     countBy(JobSearch, { createdAt: { $gte: startOfDay() } }, 'owner'),
     countBy(JobSearch, {}, 'owner'),
     countBy(AgentRun, { createdAt: { $gte: startOfDay() }, user: { $ne: null } }, 'user'),
   ]);
-  res.json({
-    items: users.map((u) => ({
-      _id: u._id,
-      email: u.email,
-      name: u.name,
-      picture: u.picture,
-      role: u.role,
-      active: u.active,
-      createdAt: u.createdAt,
-      lastLoginAt: u.lastLoginAt,
-      dailySearchLimit: u.dailySearchLimit ?? null,
-      effectiveLimit: effectiveSearchLimit(u, settings),
-      searchesToday: today.get(String(u._id))?.n || 0,
-      searchesTotal: total.get(String(u._id))?.n || 0,
-      lastSearchAt: total.get(String(u._id))?.last || null,
-      aiRunsToday: extracts.get(String(u._id))?.n || 0,
-    })),
-  });
+  return users.map((u) => ({
+    _id: u._id,
+    email: u.email,
+    name: u.name,
+    picture: u.picture,
+    phone: u.phone || '',
+    state: u.state || '',
+    city: u.city || '',
+    level: u.level || '',
+    education: u.education || '',
+    educationLabel: educationByKey(u.education)?.label || u.education || '',
+    profileComplete: isProfileComplete(u),
+    profileUpdatedAt: u.profileUpdatedAt || null,
+    role: u.role,
+    active: u.active,
+    createdAt: u.createdAt,
+    lastLoginAt: u.lastLoginAt,
+    dailySearchLimit: u.dailySearchLimit ?? null,
+    effectiveLimit: effectiveSearchLimit(u, settings),
+    searchesToday: today.get(String(u._id))?.n || 0,
+    searchesTotal: total.get(String(u._id))?.n || 0,
+    lastSearchAt: total.get(String(u._id))?.last || null,
+    aiRunsToday: extracts.get(String(u._id))?.n || 0,
+  }));
+}
+
+router.get('/users', async (req, res) => {
+  res.json({ items: await listClients(req.query, 1000) });
+});
+
+const CSV_COLUMNS = [
+  ['Name', (u) => u.name],
+  ['Email', (u) => u.email],
+  ['Mobile', (u) => u.phone],
+  ['City', (u) => u.city],
+  ['State', (u) => u.state],
+  ['Fresher / experienced', (u) => u.level],
+  ['Education', (u) => u.educationLabel],
+  ['Profile complete', (u) => (u.profileComplete ? 'yes' : 'no')],
+  ['Role', (u) => u.role],
+  ['Status', (u) => (u.active ? 'active' : 'blocked')],
+  ['Daily search limit', (u) => u.effectiveLimit ?? 'unlimited'],
+  ['Searches today', (u) => u.searchesToday],
+  ['Searches total', (u) => u.searchesTotal],
+  ['Joined', (u) => u.createdAt?.toISOString()],
+  ['Last login', (u) => u.lastLoginAt?.toISOString()],
+  ['Last search', (u) => u.lastSearchAt?.toISOString()],
+];
+
+router.get('/users.csv', async (req, res) => {
+  const users = await listClients(req.query, 100000);
+  const rows = [CSV_COLUMNS.map(([h]) => h), ...users.map((u) => CSV_COLUMNS.map(([, get]) => get(u)))];
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="thespot-clients-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(`\ufeff${rows.map((r) => r.map(csvCell).join(',')).join('\r\n')}\r\n`);
 });
 
 router.get('/users/:id/searches', async (req, res) => {

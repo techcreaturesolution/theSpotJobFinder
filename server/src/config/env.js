@@ -66,7 +66,7 @@ export const env = {
   },
 
   crawlTimeoutMs: Number(process.env.CRAWL_TIMEOUT_MS || 10000),
-  dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 50),
+  dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 5),
   jobEnrichLimit: Number(process.env.JOB_ENRICH_LIMIT || 12),
   jobSearchBudgetMs: Number(process.env.JOB_SEARCH_BUDGET_MS || 40000),
 };

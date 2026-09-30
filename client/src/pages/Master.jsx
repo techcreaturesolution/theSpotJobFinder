@@ -59,7 +59,7 @@ function UserSearches({ user, onClose }) {
   }, [user._id]);
   return (
     <tr>
-      <td className="td bg-slate-50" colSpan={8}>
+      <td className="td bg-slate-50" colSpan={10}>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs font-semibold">Recent searches by {user.email}</span>
           <button type="button" className="text-xs text-slate-500" onClick={onClose}>
@@ -117,7 +117,7 @@ function LimitEditor({ user, onSave }) {
 
 function Clients({ setError }) {
   const { user: me } = useAuth();
-  const [filters, setFilters] = useState({ q: '', role: '', status: '' });
+  const [filters, setFilters] = useState({ q: '', role: '', status: '', profile: '' });
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(null);
 
@@ -142,11 +142,24 @@ function Clients({ setError }) {
     }
   };
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
+  const download = async () => {
+    try {
+      const { data, headers } = await api.get('/master/users.csv', { params: filters, responseType: 'blob' });
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = /filename="([^"]+)"/.exec(headers['content-disposition'] || '')?.[1] || 'clients.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <input className="input max-w-xs" placeholder="Search name or email" value={filters.q} onChange={set('q')} />
+        <input className="input max-w-xs" placeholder="Search name, email, mobile or city" value={filters.q} onChange={set('q')} />
         <select className="input w-40" value={filters.role} onChange={set('role')} aria-label="Role">
           <option value="">All roles</option>
           <option value="user">Users</option>
@@ -158,6 +171,14 @@ function Clients({ setError }) {
           <option value="active">Active</option>
           <option value="blocked">Blocked</option>
         </select>
+        <select className="input w-44" value={filters.profile} onChange={set('profile')} aria-label="Profile">
+          <option value="">Any profile</option>
+          <option value="complete">Profile complete</option>
+          <option value="incomplete">Profile incomplete</option>
+        </select>
+        <button type="button" className="btn-secondary ml-auto" onClick={download}>
+          Download CSV
+        </button>
       </div>
       <p className="text-xs text-slate-500">Daily limit: leave empty to use the global limit; 0 pauses searching for that user.</p>
       <div className="card overflow-x-auto p-0">
@@ -165,6 +186,8 @@ function Clients({ setError }) {
           <thead className="bg-slate-50">
             <tr>
               <th className="th">Client</th>
+              <th className="th">Mobile &amp; location</th>
+              <th className="th">Profile</th>
               <th className="th">Role</th>
               <th className="th">Status</th>
               <th className="th">Searches today</th>
@@ -184,6 +207,20 @@ function Clients({ setError }) {
                     <div className="font-medium">{u.name || '—'}</div>
                     <div className="text-xs text-slate-500">{u.email}</div>
                     <div className="text-xs text-slate-400">Joined {when(u.createdAt)}</div>
+                  </td>
+                  <td className="td text-sm">
+                    {u.phone ? <a href={`tel:+91${u.phone}`}>+91 {u.phone}</a> : <span className="text-slate-400">—</span>}
+                    <div className="text-xs text-slate-500">{[u.city, u.state].filter(Boolean).join(', ') || '—'}</div>
+                  </td>
+                  <td className="td text-xs">
+                    {u.profileComplete ? (
+                      <>
+                        <div className="capitalize">{u.level}</div>
+                        <div className="text-slate-500">{u.educationLabel}</div>
+                      </>
+                    ) : (
+                      <span className="badge bg-amber-100 text-amber-700">incomplete</span>
+                    )}
                   </td>
                   <td className="td">
                     <span className={`badge ${master ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -228,7 +265,7 @@ function Clients({ setError }) {
             })}
             {!items.length && (
               <tr>
-                <td className="td py-8 text-center text-slate-500" colSpan={8}>
+                <td className="td py-8 text-center text-slate-500" colSpan={10}>
                   No clients match.
                 </td>
               </tr>
