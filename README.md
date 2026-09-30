@@ -15,7 +15,7 @@ Other features:
 - **AI job agent (optional, OpenAI).** Turns the prompt into a search query and checks each listing against the text of its source page. It only keeps facts that appear word for word on that page.
 - **No duplicates, re-verified on every search.** Listings are merged when they share a title + company + city or a posting URL, and emails, phone numbers and apply links are de-duplicated after normalisation. Every search re-checks each listing against its source page; stored listings that were not re-checked in that search are not shown as verified.
 - **Google ads only.** Google AdSense display ads and Google video ads (IMA) on the web, Google AdMob banner and rewarded video ads in the mobile app. There is no admin form for creating or approving ads.
-- **Mandatory 1-minute video ad before every search result.** Watch time is tracked on the server, so results stay locked until the ad has actually played. In the app, an AdMob rewarded ad unlocks results once Google confirms the reward to the server.
+- **Mandatory 30-second video ad before every search result.** Watch time is tracked on the server, so results stay locked until the ad has actually played. In the app, an AdMob rewarded ad unlocks results once Google confirms the reward to the server.
 - **Flutter mobile app** (`mobile/`) for Android and iOS, using the same API.
 - **AI job posting.** In Admin → Jobs, paste a job advert (WhatsApp, X, LinkedIn, Facebook, newspaper or email text) or a job page link. The AI agent fills the job form using only facts written in the advert (several jobs in one post become several drafts). You review each draft and post it, or post all ready drafts at once. Without `OPENAI_API_KEY`, the job page's `JobPosting` data or pattern matching is used instead.
 - **AI auto-import (scheduled).** In Admin → AI auto-import, add rules (keywords, category, fresher/experienced, education, state, city, how often, max jobs per run). On schedule, the agent runs a verified search and posts the matching jobs to the portal automatically. It only posts jobs that were confirmed on their source page, are still open, and have a company name and an apply link or HR email. Jobs already on the portal (same title + company + city, or the same source page, including hidden ones) are skipped. On every search, each imported job's source page is checked again, and jobs that have closed are hidden, then deleted by the daily cleanup.
@@ -76,7 +76,7 @@ The app runs without any API keys. In that case search uses portal jobs, the rul
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Enables the AI job agent |
 | `ADSENSE_CLIENT_ID`, `ADSENSE_SLOT_{BANNER,SIDEBAR,INLINE,RAIL}` | AdSense publisher ID and display ad unit IDs |
 | `ADSENSE_TEST_MODE`, `ADSENSE_DEMO` | `data-adtest="on"`; show demo creatives in unconfigured slots (default `true`) |
-| `VIDEO_AD_REQUIRED`, `VIDEO_AD_SECONDS`, `VIDEO_AD_EXEMPT_ADMINS` | Video ad before every search result (default on, 60 s, admins exempt) |
+| `VIDEO_AD_REQUIRED`, `VIDEO_AD_SECONDS`, `VIDEO_AD_EXEMPT_ADMINS` | Video ad before every search result (default on, 30 s, admins exempt) |
 | `VIDEO_AD_VAST_TAG`, `VIDEO_AD_DEMO` | Google video ad tag (AdSense for video / Ad Manager) played via the Google IMA SDK; demo video when unset (default `true`) |
 | `GOOGLE_MOBILE_CLIENT_IDS` | Extra Google OAuth client IDs accepted from the Flutter app |
 | `ADMOB_{ANDROID,IOS}_{BANNER,REWARDED}_ID` | AdMob ad units for the Flutter app |

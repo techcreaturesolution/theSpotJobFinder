@@ -49,7 +49,7 @@ export const env = {
 
   videoAd: {
     required: bool(process.env.VIDEO_AD_REQUIRED, true),
-    seconds: Math.min(300, Math.max(5, Number(process.env.VIDEO_AD_SECONDS || 60))),
+    seconds: Math.min(300, Math.max(5, Number(process.env.VIDEO_AD_SECONDS || 30))),
     exemptAdmins: bool(process.env.VIDEO_AD_EXEMPT_ADMINS, true),
     vastTag: /^https:\/\//.test(process.env.VIDEO_AD_VAST_TAG || '') ? process.env.VIDEO_AD_VAST_TAG : '',
     demo: bool(process.env.VIDEO_AD_DEMO, true),
