@@ -5,7 +5,7 @@ import { AGENTS, AgentRun } from '../models/AgentRun.js';
 import { AutoImportRule } from '../models/AutoImportRule.js';
 import { JobPosting } from '../models/JobPosting.js';
 import { JobSearch } from '../models/JobSearch.js';
-import { CACHE_MAX_HOURS, SearchCache } from '../models/SearchCache.js';
+import { SearchCache } from '../models/SearchCache.js';
 import { User } from '../models/User.js';
 import { llmConfigured } from '../services/agent/llm.js';
 import { runAllActiveRules } from '../services/jobs/autoImport.js';
@@ -24,7 +24,6 @@ const countBy = async (Model, match, field) => {
 router.get('/overview', async (_req, res) => {
   const today = startOfDay();
   const settings = await getSettings({ fresh: true });
-  const cacheSince = new Date(Date.now() - (settings.cache?.ttlHours || 0) * 3600_000);
   const [users, admins, masters, blocked, newUsersToday, searchesToday, searchesTotal, seekersToday, portalJobs, activeRules, runsToday, lastRun, savedSearches, savedHitsToday, storedJobs, closedJobs] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ role: 'admin' }),
@@ -50,7 +49,7 @@ router.get('/overview', async (_req, res) => {
       },
     ]),
     AgentRun.findOne({ agent: 'auto_import' }).sort({ createdAt: -1 }).lean(),
-    SearchCache.countDocuments({ refreshedAt: { $gte: cacheSince } }),
+    SearchCache.countDocuments(),
     JobSearch.countDocuments({ createdAt: { $gte: today }, cached: true }),
     JobPosting.countDocuments(),
     JobPosting.countDocuments(closedJobFilter()),
@@ -93,7 +92,7 @@ const settingsSchema = z
       })
       .partial()
       .strict(),
-    cache: z.object({ enabled: z.boolean(), ttlHours: z.coerce.number().int().min(1).max(CACHE_MAX_HOURS) }).partial().strict(),
+    cache: z.object({ enabled: z.boolean() }).partial().strict(),
     cleanup: z.object({ enabled: z.boolean() }).partial().strict(),
   })
   .partial()
@@ -215,10 +214,8 @@ router.post('/agents/auto-import/run', async (req, res) => {
 });
 
 router.get('/saved-searches', async (_req, res) => {
-  const { cache } = await getSettings();
-  const since = new Date(Date.now() - (cache?.ttlHours || 0) * 3600_000);
   const items = await SearchCache.find().sort({ refreshedAt: -1 }).limit(200).select('label refreshedAt hits lastHitAt jobs').lean();
-  res.json({ items: items.map(({ jobs, ...d }) => ({ ...d, jobCount: jobs.length, fresh: d.refreshedAt >= since })) });
+  res.json({ items: items.map(({ jobs, ...d }) => ({ ...d, jobCount: jobs.length })) });
 });
 
 router.delete('/saved-searches', async (_req, res) => {

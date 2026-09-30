@@ -15,19 +15,17 @@ export function searchCacheKey(input) {
   return crypto.createHash('sha1').update(JSON.stringify(parts)).digest('hex');
 }
 
-async function cacheWindow() {
+async function cacheEnabled() {
   const { cache } = await getSettings();
-  if (!cache?.enabled || !cache.ttlHours) return null;
-  return new Date(Date.now() - cache.ttlHours * 3600_000);
+  return cache?.enabled !== false;
 }
 
 const openJob = () => ({ active: true, $or: [{ validThrough: null }, { validThrough: { $gte: new Date() } }] });
 
 export async function findCachedSearch(input) {
-  const since = await cacheWindow();
-  if (!since) return null;
+  if (!(await cacheEnabled())) return null;
   const key = searchCacheKey(input);
-  const doc = await SearchCache.findOne({ _id: key, refreshedAt: { $gte: since } }).lean();
+  const doc = await SearchCache.findById(key).lean();
   if (!doc) return null;
   const [open, newPortal] = await Promise.all([
     JobPosting.find({ _id: { $in: doc.jobs }, ...openJob() }).select('_id').lean(),
@@ -47,7 +45,7 @@ export async function findCachedSearch(input) {
 }
 
 export async function saveSearchCache(input, { plan, providers, items, hiddenUnverified, durationMs }) {
-  if (!items?.length || !(await cacheWindow())) return;
+  if (!items?.length || !(await cacheEnabled())) return;
   await SearchCache.updateOne(
     { _id: searchCacheKey(input) },
     { $set: { label: plan.q, plan, providers, jobs: items.map((j) => j._id), hiddenUnverified, durationMs, refreshedAt: new Date() } },

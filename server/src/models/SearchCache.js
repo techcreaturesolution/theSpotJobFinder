@@ -1,7 +1,5 @@
 import mongoose from 'mongoose';
 
-export const CACHE_MAX_HOURS = 168;
-
 const searchCacheSchema = new mongoose.Schema(
   {
     _id: { type: String },
@@ -18,7 +16,6 @@ const searchCacheSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-searchCacheSchema.index({ refreshedAt: 1 }, { expireAfterSeconds: CACHE_MAX_HOURS * 3600 });
 searchCacheSchema.index({ jobs: 1 });
 
 export const SearchCache = mongoose.model('SearchCache', searchCacheSchema);

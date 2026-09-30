@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { AutoImportRule } from './models/AutoImportRule.js';
 import { JobPosting } from './models/JobPosting.js';
 import { JobSearch } from './models/JobSearch.js';
+import { SearchCache } from './models/SearchCache.js';
 import { startAutoImport } from './services/jobs/autoImport.js';
 import { startCleanup } from './services/jobs/cleanup.js';
 import { identityKey } from './services/jobs/dedupe.js';
@@ -16,6 +17,7 @@ const missing = await JobPosting.find({ dedupeKey: { $exists: false } }).select(
 if (missing.length) {
   await JobPosting.bulkWrite(missing.map((j) => ({ updateOne: { filter: { _id: j._id }, update: { $set: { dedupeKey: identityKey(j) || j.key } } } })));
 }
+await SearchCache.syncIndexes();
 await getSettings({ fresh: true });
 createApp().listen(env.port, () => console.log(`[api] listening on http://localhost:${env.port}`));
 startAutoImport();
