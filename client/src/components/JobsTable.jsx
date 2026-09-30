@@ -11,6 +11,7 @@ function postedLabel(job) {
 
 const VERIFY_LABEL = {
   portal: 'Posted directly on this portal',
+  ai_import: 'Imported by the AI agent from a verified source; the source page is re-checked on every search',
   google_jobs: 'Listed on Google Jobs',
   json_ld: 'Confirmed from the job page’s structured data',
   ai_agent: 'Confirmed by the AI agent from the job page',
