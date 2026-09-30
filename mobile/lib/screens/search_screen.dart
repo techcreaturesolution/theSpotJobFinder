@@ -195,7 +195,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'A video ad plays with every search. Daily limit: ${meta.dailyLimit} searches.',
+                  meta.dailyLimit == null
+                      ? 'A video ad plays with every search. No daily search limit.'
+                      : 'A video ad plays with every search. ${meta.searchesToday} of ${meta.dailyLimit} searches used today.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),

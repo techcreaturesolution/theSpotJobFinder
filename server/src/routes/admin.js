@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { JOB_LEVELS, JobPosting } from '../models/JobPosting.js';
+import { AgentRun } from '../models/AgentRun.js';
 import { AutoImportRule } from '../models/AutoImportRule.js';
 import { JobSearch } from '../models/JobSearch.js';
 import { User } from '../models/User.js';
@@ -13,6 +14,7 @@ import { extractJobDrafts } from '../services/jobs/importer.js';
 import { INDIAN_STATES } from '../services/jobs/india.js';
 import { extractPhones } from '../services/jobs/parse.js';
 import { llmEnabled } from '../services/agent/llm.js';
+import { autoImportAllowance, extractAllowance } from '../services/limits.js';
 import { HttpError } from '../utils/httpError.js';
 
 const router = Router();
@@ -96,7 +98,17 @@ const extractSchema = z
 
 router.post('/jobs/extract', async (req, res) => {
   const body = extractSchema.parse(req.body);
-  const result = await extractJobDrafts(body);
+  const allowance = await extractAllowance(req.user);
+  if (!allowance.allowed) throw new HttpError(allowance.status, allowance.reason);
+  const started = Date.now();
+  let result;
+  try {
+    result = await extractJobDrafts(body);
+  } catch (err) {
+    await AgentRun.create({ agent: 'ai_extract', user: req.user._id, status: 'failed', error: String(err.message || err).slice(0, 300), durationMs: Date.now() - started });
+    throw err;
+  }
+  await AgentRun.create({ agent: 'ai_extract', user: req.user._id, method: result.method, drafts: result.drafts.length, durationMs: Date.now() - started });
   const keys = result.drafts.map((d) => identityKey(d)).filter(Boolean);
   const dups = keys.length ? await JobPosting.find({ origin: 'portal', dedupeKey: { $in: keys } }).select('dedupeKey').lean() : [];
   const dupKeys = new Set(dups.map((d) => d.dedupeKey));
@@ -167,9 +179,11 @@ router.delete('/auto-import/:id', async (req, res) => {
 
 router.post('/auto-import/:id/run', async (req, res) => {
   if (!(await AutoImportRule.exists({ _id: req.params.id }))) throw new HttpError(404, 'Rule not found');
+  const allowance = await autoImportAllowance({ bypassLimits: req.user.role === 'master' });
+  if (!allowance.allowed) throw new HttpError(allowance.status, allowance.reason);
   const rule = await claimRule({ _id: req.params.id });
   if (!rule) throw new HttpError(409, 'This rule is already running');
-  res.json({ result: await runImportRule(rule, { postedBy: req.user._id }) });
+  res.json({ result: await runImportRule(rule, { postedBy: req.user._id, userId: req.user._id, trigger: 'manual', maxPosts: allowance.remainingPosts }) });
 });
 
 router.get('/users', async (_req, res) => {
@@ -182,16 +196,6 @@ router.get('/users', async (_req, res) => {
       jobSearches: jobsById.get(String(u._id)) || 0,
     })),
   });
-});
-
-router.patch('/users/:id', async (req, res) => {
-  const body = z.object({ role: z.enum(['user', 'admin']).optional(), active: z.boolean().optional() }).parse(req.body);
-  if (String(req.params.id) === String(req.user._id) && (body.role === 'user' || body.active === false)) {
-    throw new HttpError(400, 'You cannot demote or disable yourself');
-  }
-  const user = await User.findByIdAndUpdate(req.params.id, body, { returnDocument: 'after' });
-  if (!user) throw new HttpError(404, 'User not found');
-  res.json({ user: user.toPublic() });
 });
 
 export default router;

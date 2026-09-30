@@ -1,0 +1,195 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { env } from '../config/env.js';
+import { AGENTS, AgentRun } from '../models/AgentRun.js';
+import { AutoImportRule } from '../models/AutoImportRule.js';
+import { JobPosting } from '../models/JobPosting.js';
+import { JobSearch } from '../models/JobSearch.js';
+import { User } from '../models/User.js';
+import { llmConfigured } from '../services/agent/llm.js';
+import { runAllActiveRules } from '../services/jobs/autoImport.js';
+import { effectiveSearchLimit, startOfDay } from '../services/limits.js';
+import { getSettings, updateSettings } from '../services/settings.js';
+import { HttpError } from '../utils/httpError.js';
+
+const router = Router();
+
+const countBy = async (Model, match, field) => {
+  const rows = await Model.aggregate([{ $match: match }, { $group: { _id: `$${field}`, n: { $sum: 1 }, last: { $max: '$createdAt' } } }]);
+  return new Map(rows.map((r) => [String(r._id), r]));
+};
+
+router.get('/overview', async (_req, res) => {
+  const today = startOfDay();
+  const [settings, users, admins, masters, blocked, newUsersToday, searchesToday, searchesTotal, seekersToday, portalJobs, activeRules, runsToday, lastRun] = await Promise.all([
+    getSettings({ fresh: true }),
+    User.countDocuments(),
+    User.countDocuments({ role: 'admin' }),
+    User.countDocuments({ role: 'master' }),
+    User.countDocuments({ active: false }),
+    User.countDocuments({ createdAt: { $gte: today } }),
+    JobSearch.countDocuments({ createdAt: { $gte: today } }),
+    JobSearch.countDocuments(),
+    JobSearch.distinct('owner', { createdAt: { $gte: today } }),
+    JobPosting.countDocuments({ origin: 'portal' }),
+    AutoImportRule.countDocuments({ active: true }),
+    AgentRun.aggregate([
+      { $match: { createdAt: { $gte: today } } },
+      { $group: { _id: '$agent', runs: { $sum: 1 }, posted: { $sum: '$posted' }, drafts: { $sum: '$drafts' }, failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } } } },
+    ]),
+    AgentRun.findOne({ agent: 'auto_import' }).sort({ createdAt: -1 }).lean(),
+  ]);
+  const agents = Object.fromEntries(AGENTS.map((a) => [a, { runs: 0, posted: 0, drafts: 0, failed: 0 }]));
+  for (const r of runsToday) agents[r._id] = { runs: r.runs, posted: r.posted, drafts: r.drafts, failed: r.failed };
+  res.json({
+    today,
+    users: { total: users, admins, masters, blocked, newToday: newUsersToday, searchingToday: seekersToday.length },
+    searches: { today: searchesToday, total: searchesTotal },
+    portalJobs,
+    activeRules,
+    agents,
+    lastAutoImport: lastRun,
+    settings,
+    system: { openaiConfigured: llmConfigured(), schedulerEnabled: env.autoImport.enabled, schedulerTickMinutes: Math.round(env.autoImport.tickMs / 60_000) },
+  });
+});
+
+router.get('/settings', async (_req, res) => {
+  res.json({ settings: await getSettings({ fresh: true }) });
+});
+
+const limit = (max) => z.coerce.number().int().min(0).max(max);
+const settingsSchema = z
+  .object({
+    dailySearchLimit: limit(10000),
+    staffUnlimitedSearch: z.boolean(),
+    ai: z
+      .object({
+        openaiEnabled: z.boolean(),
+        extractEnabled: z.boolean(),
+        extractDailyLimit: limit(10000),
+        autoImportEnabled: z.boolean(),
+        autoImportDailyRuns: limit(1000),
+        autoImportDailyPosts: limit(10000),
+      })
+      .partial()
+      .strict(),
+  })
+  .partial()
+  .strict();
+
+router.put('/settings', async (req, res) => {
+  res.json({ settings: await updateSettings(settingsSchema.parse(req.body), req.user._id) });
+});
+
+router.get('/users', async (req, res) => {
+  const q = z
+    .object({ q: z.string().trim().max(100).default(''), role: z.enum(['', 'user', 'admin', 'master']).default(''), status: z.enum(['', 'active', 'blocked']).default('') })
+    .parse(req.query);
+  const filter = {};
+  if (q.q) {
+    const rx = new RegExp(q.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = [{ email: rx }, { name: rx }];
+  }
+  if (q.role) filter.role = q.role;
+  if (q.status) filter.active = q.status === 'active';
+  const [users, settings, today, total, extracts] = await Promise.all([
+    User.find(filter).sort({ createdAt: -1 }).limit(1000).lean(),
+    getSettings(),
+    countBy(JobSearch, { createdAt: { $gte: startOfDay() } }, 'owner'),
+    countBy(JobSearch, {}, 'owner'),
+    countBy(AgentRun, { createdAt: { $gte: startOfDay() }, user: { $ne: null } }, 'user'),
+  ]);
+  res.json({
+    items: users.map((u) => ({
+      _id: u._id,
+      email: u.email,
+      name: u.name,
+      picture: u.picture,
+      role: u.role,
+      active: u.active,
+      createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt,
+      dailySearchLimit: u.dailySearchLimit ?? null,
+      effectiveLimit: effectiveSearchLimit(u, settings),
+      searchesToday: today.get(String(u._id))?.n || 0,
+      searchesTotal: total.get(String(u._id))?.n || 0,
+      lastSearchAt: total.get(String(u._id))?.last || null,
+      aiRunsToday: extracts.get(String(u._id))?.n || 0,
+    })),
+  });
+});
+
+router.get('/users/:id/searches', async (req, res) => {
+  const items = await JobSearch.find({ owner: req.params.id })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .select('prompt level category education state city status resultCount durationMs createdAt')
+    .lean();
+  res.json({ items });
+});
+
+router.patch('/users/:id', async (req, res) => {
+  const body = z
+    .object({
+      role: z.enum(['user', 'admin']).optional(),
+      active: z.boolean().optional(),
+      dailySearchLimit: z.union([z.null(), limit(10000)]).optional(),
+    })
+    .strict()
+    .parse(req.body);
+  const target = await User.findById(req.params.id);
+  if (!target) throw new HttpError(404, 'User not found');
+  if (target.role === 'master' && (body.role || body.active === false)) {
+    throw new HttpError(400, 'Master admins are set with MASTER_ADMIN_EMAILS and cannot be demoted or blocked here');
+  }
+  if (body.role) {
+    target.role = body.role;
+    target.roleManaged = true;
+  }
+  if (body.active !== undefined) target.active = body.active;
+  if (body.dailySearchLimit !== undefined) target.dailySearchLimit = body.dailySearchLimit;
+  await target.save();
+  res.json({ user: target.toPublic() });
+});
+
+router.get('/agent-runs', async (req, res) => {
+  const q = z.object({ agent: z.union([z.enum(AGENTS), z.literal('')]).default(''), days: z.coerce.number().int().min(1).max(90).default(7) }).parse(req.query);
+  const since = startOfDay(Date.now(), q.days - 1);
+  const match = { createdAt: { $gte: since }, ...(q.agent ? { agent: q.agent } : {}) };
+  const [items, daily] = await Promise.all([
+    AgentRun.find(match).sort({ createdAt: -1 }).limit(200).populate('user', 'email name').lean(),
+    AgentRun.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Kolkata' } }, agent: '$agent' },
+          runs: { $sum: 1 },
+          posted: { $sum: '$posted' },
+          drafts: { $sum: '$drafts' },
+          failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+        },
+      },
+      { $sort: { '_id.day': -1 } },
+    ]),
+  ]);
+  res.json({ items, daily: daily.map((d) => ({ day: d._id.day, agent: d._id.agent, runs: d.runs, posted: d.posted, drafts: d.drafts, failed: d.failed })), since });
+});
+
+let runAllBusy = false;
+router.post('/agents/auto-import/run', async (req, res) => {
+  const { ai } = await getSettings({ fresh: true });
+  if (!ai.autoImportEnabled) throw new HttpError(403, 'Turn on AI auto-import first');
+  if (runAllBusy) throw new HttpError(409, 'A full auto-import run is already in progress');
+  const rules = await AutoImportRule.countDocuments({ active: true });
+  if (!rules) throw new HttpError(400, 'There are no active auto-import rules');
+  runAllBusy = true;
+  runAllActiveRules({ userId: req.user._id, bypassLimits: true })
+    .catch((err) => console.error('[master] run-all failed', err))
+    .finally(() => {
+      runAllBusy = false;
+    });
+  res.status(202).json({ started: rules });
+});
+
+export default router;

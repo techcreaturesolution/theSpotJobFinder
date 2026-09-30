@@ -8,7 +8,7 @@ const linkCls = ({ isActive }) =>
 export default function Layout() {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
-  const showAds = !pathname.startsWith('/admin');
+  const showAds = !pathname.startsWith('/admin') && !pathname.startsWith('/master');
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white p-4 md:flex">
@@ -23,9 +23,14 @@ export default function Layout() {
           <NavLink to="/" end className={linkCls}>
             New Jobs
           </NavLink>
-          {user?.role === 'admin' && (
+          {['admin', 'master'].includes(user?.role) && (
             <NavLink to="/admin" className={linkCls}>
-              Admin · Jobs &amp; users
+              Admin · Jobs &amp; AI import
+            </NavLink>
+          )}
+          {user?.role === 'master' && (
+            <NavLink to="/master" className={linkCls}>
+              Master Admin
             </NavLink>
           )}
         </nav>
@@ -56,7 +61,8 @@ export default function Layout() {
             <NavLink to="/" end>
               New Jobs
             </NavLink>
-            {user?.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}
+            {['admin', 'master'].includes(user?.role) && <NavLink to="/admin">Admin</NavLink>}
+            {user?.role === 'master' && <NavLink to="/master">Master</NavLink>}
             <button type="button" onClick={logout}>
               Logout
             </button>

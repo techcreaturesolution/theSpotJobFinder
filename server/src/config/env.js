@@ -20,6 +20,7 @@ export const env = {
   googleMobileClientIds: (process.env.GOOGLE_MOBILE_CLIENT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean),
   allowedEmailDomains: list(process.env.ALLOWED_EMAIL_DOMAINS),
   adminEmails: list(process.env.ADMIN_EMAILS),
+  masterAdminEmails: list(process.env.MASTER_ADMIN_EMAILS),
   devLoginEnabled: bool(process.env.DEV_LOGIN_ENABLED) && process.env.NODE_ENV !== 'production',
 
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',

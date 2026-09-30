@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { JOB_LEVELS, JobPosting } from '../models/JobPosting.js';
 import { isAdLocked, publicAdGate } from '../models/adGate.js';
 import { JobSearch } from '../models/JobSearch.js';
@@ -11,6 +10,7 @@ import { dedupeJobs } from '../services/jobs/dedupe.js';
 import { CATEGORY_KEYS, JOB_CATEGORIES } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS, EDUCATION_LEVELS } from '../services/jobs/education.js';
 import { INDIAN_STATES } from '../services/jobs/india.js';
+import { searchQuota } from '../services/limits.js';
 import { jobProviders } from '../services/jobs/providers.js';
 import { AD_EVENTS, adGateInfo, newAdGate, recordAdEvent } from '../services/videoAd.js';
 import { HttpError } from '../utils/httpError.js';
@@ -34,7 +34,8 @@ const searchSchema = z
   })
   .refine((d) => d.prompt.length >= 2 || d.category, { message: 'Describe the job you want or pick a category', path: ['prompt'] });
 
-router.get('/meta', (_req, res) => {
+router.get('/meta', async (req, res) => {
+  const quota = await searchQuota(req.user);
   res.json({
     categories: JOB_CATEGORIES.map(({ key, label }) => ({ key, label })),
     levels: JOB_LEVELS,
@@ -43,7 +44,9 @@ router.get('/meta', (_req, res) => {
     postedWithin: POSTED_WITHIN,
     providers: jobProviders(),
     ai: llmEnabled() ? 'openai' : 'rules',
-    dailyLimit: env.dailyJobSearchLimit,
+    dailyLimit: quota.limit,
+    searchesToday: quota.used,
+    searchesLeft: quota.remaining,
   });
 });
 
@@ -76,9 +79,9 @@ async function ownSearch(req) {
 
 router.post('/search', searchLimiter, async (req, res) => {
   const body = searchSchema.parse(req.body);
-  if (req.user.role !== 'admin') {
-    const today = await JobSearch.countDocuments({ owner: req.user._id, createdAt: { $gte: new Date(Date.now() - 86400_000) } });
-    if (today >= env.dailyJobSearchLimit) throw new HttpError(429, `Daily job search limit (${env.dailyJobSearchLimit}) reached`);
+  const quota = await searchQuota(req.user);
+  if (quota.remaining === 0) {
+    throw new HttpError(429, quota.limit === 0 ? 'Job search is paused for your account. Please contact support.' : `Daily job search limit (${quota.limit}) reached. Try again tomorrow.`);
   }
   const search = await JobSearch.create({ ...body, owner: req.user._id, query: body.prompt || body.category, adGate: newAdGate(req.user) });
   runSearch(search._id, body);

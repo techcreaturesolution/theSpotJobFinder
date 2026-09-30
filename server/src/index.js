@@ -6,6 +6,7 @@ import { JobPosting } from './models/JobPosting.js';
 import { JobSearch } from './models/JobSearch.js';
 import { startAutoImport } from './services/jobs/autoImport.js';
 import { identityKey } from './services/jobs/dedupe.js';
+import { getSettings } from './services/settings.js';
 
 await connectDb();
 await AutoImportRule.updateMany({ runningSince: { $ne: null } }, { $unset: { runningSince: 1 } });
@@ -14,5 +15,6 @@ const missing = await JobPosting.find({ dedupeKey: { $exists: false } }).select(
 if (missing.length) {
   await JobPosting.bulkWrite(missing.map((j) => ({ updateOne: { filter: { _id: j._id }, update: { $set: { dedupeKey: identityKey(j) || j.key } } } })));
 }
+await getSettings({ fresh: true });
 createApp().listen(env.port, () => console.log(`[api] listening on http://localhost:${env.port}`));
 startAutoImport();

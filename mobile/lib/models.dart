@@ -22,6 +22,7 @@ class JobMeta {
     required this.states,
     required this.postedWithin,
     required this.dailyLimit,
+    this.searchesToday = 0,
   });
 
   final List<Option> categories;
@@ -29,7 +30,8 @@ class JobMeta {
   final List<String> levels;
   final List<String> states;
   final List<int> postedWithin;
-  final int dailyLimit;
+  final int? dailyLimit;
+  final int searchesToday;
 
   factory JobMeta.fromJson(Map<String, dynamic> j) => JobMeta(
     categories: (j['categories'] as List? ?? [])
@@ -43,7 +45,8 @@ class JobMeta {
     postedWithin: (j['postedWithin'] as List? ?? [])
         .map((e) => (e as num).toInt())
         .toList(),
-    dailyLimit: (j['dailyLimit'] as num?)?.toInt() ?? 0,
+    dailyLimit: (j['dailyLimit'] as num?)?.toInt(),
+    searchesToday: (j['searchesToday'] as num?)?.toInt() ?? 0,
   );
 
   String educationLabel(String key) => education

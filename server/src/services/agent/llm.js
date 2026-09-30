@@ -2,9 +2,18 @@ import OpenAI from 'openai';
 import { env } from '../../config/env.js';
 
 let client;
+let switchedOn = true;
+
+export function setAiEnabled(on) {
+  switchedOn = Boolean(on);
+}
+
+export function llmConfigured() {
+  return Boolean(env.openaiApiKey);
+}
 
 export function llmEnabled() {
-  return Boolean(env.openaiApiKey);
+  return llmConfigured() && switchedOn;
 }
 
 export async function llmJson(system, user, { maxTokens = 800 } = {}) {

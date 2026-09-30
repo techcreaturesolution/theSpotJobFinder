@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, errMsg } from '../lib/api.js';
+import { useAuth } from '../lib/auth.jsx';
 import { getAdsenseConfig } from '../lib/adsense.js';
 
 const toDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
@@ -507,6 +509,7 @@ function AdsenseStatus() {
 }
 
 export default function Admin() {
+  const { user: me } = useAuth();
   const [tab, setTab] = useState('jobs');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
@@ -529,15 +532,6 @@ export default function Admin() {
     if (!window.confirm('Delete this job?')) return;
     await api.delete(`/admin/jobs/${id}`).catch((e) => setError(errMsg(e)));
     load();
-  };
-
-  const updateUser = async (id, body) => {
-    try {
-      await api.patch(`/admin/users/${id}`, body);
-      load();
-    } catch (e) {
-      setError(errMsg(e));
-    }
   };
 
   return (
@@ -655,6 +649,18 @@ export default function Admin() {
       {tab === 'auto' && <AutoImport meta={jobMeta} onPosted={load} />}
 
       {tab === 'users' && (
+        <div className="space-y-3">
+        <p className="text-sm text-slate-500">
+          Roles, blocking and daily search limits are managed by the master admin.
+          {me?.role === 'master' && (
+            <>
+              {' '}
+              <Link to="/master" className="text-blue-700">
+                Open Master Admin →
+              </Link>
+            </>
+          )}
+        </p>
         <div className="card overflow-x-auto p-0">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
@@ -662,8 +668,8 @@ export default function Admin() {
                 <th className="th">User</th>
                 <th className="th">Role</th>
                 <th className="th">Job searches</th>
+                <th className="th">Status</th>
                 <th className="th">Last login</th>
-                <th className="th" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -675,19 +681,15 @@ export default function Admin() {
                   </td>
                   <td className="td">{u.role}</td>
                   <td className="td">{u.jobSearches}</td>
-                  <td className="td text-xs">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</td>
-                  <td className="td whitespace-nowrap text-right text-xs">
-                    <button type="button" className="mr-3 text-blue-700" onClick={() => updateUser(u._id, { role: u.role === 'admin' ? 'user' : 'admin' })}>
-                      Make {u.role === 'admin' ? 'user' : 'admin'}
-                    </button>
-                    <button type="button" className={u.active ? 'text-red-600' : 'text-green-700'} onClick={() => updateUser(u._id, { active: !u.active })}>
-                      {u.active ? 'Disable' : 'Enable'}
-                    </button>
+                  <td className="td">
+                    <span className={`badge ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{u.active ? 'active' : 'blocked'}</span>
                   </td>
+                  <td className="td text-xs">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
     </div>
