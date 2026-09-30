@@ -30,16 +30,14 @@ async function upsertUser({ email, name, picture, googleId }) {
   const user = await User.findOneAndUpdate(
     { email: normalized },
     {
-      $set: { name, picture, lastLoginAt: new Date(), ...(googleId ? { googleId } : {}) },
+      $set: { picture, lastLoginAt: new Date(), ...(googleId ? { googleId } : {}) },
       $setOnInsert: { email: normalized },
     },
     { upsert: true, returnDocument: 'after' },
   );
-  const role = roleFor(user);
-  if (role !== user.role) {
-    user.role = role;
-    await user.save();
-  }
+  if (name && !user.profileUpdatedAt) user.name = name;
+  user.role = roleFor(user);
+  if (user.isModified()) await user.save();
   if (!user.active) throw new HttpError(403, 'Account disabled');
   return user;
 }
