@@ -276,7 +276,7 @@ export default function Jobs() {
                 {[result.search.level === 'fresher' ? 'Fresher' : 'Experienced', labelOf(meta?.categories, result.search.category), labelOf(meta?.education, result.search.education), [result.search.city, result.search.state].filter(Boolean).join(', ') || 'All India', POSTED_LABEL[result.search.postedWithin]]
                   .filter(Boolean)
                   .join(' · ')}{' '}
-                · searched in {(result.search.durationMs / 1000).toFixed(1)}s
+                {result.search.cached ? ` · saved results from ${new Date(result.search.cachedAt).toLocaleString()}` : ` · searched in ${(result.search.durationMs / 1000).toFixed(1)}s`}
                 {result.search.hiddenUnverified > 0 && ` · ${result.search.hiddenUnverified} unverified listings hidden`}
               </div>
             </div>

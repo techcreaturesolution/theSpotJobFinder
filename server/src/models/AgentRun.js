@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-export const AGENTS = ['auto_import', 'ai_extract'];
+export const AGENTS = ['auto_import', 'ai_extract', 'cleanup'];
 
 const agentRunSchema = new mongoose.Schema(
   {
@@ -16,6 +16,7 @@ const agentRunSchema = new mongoose.Schema(
     duplicates: { type: Number, default: 0 },
     skipped: { type: Number, default: 0 },
     drafts: { type: Number, default: 0 },
+    removed: { type: Number, default: 0 },
     error: String,
     durationMs: Number,
   },

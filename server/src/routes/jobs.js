@@ -7,6 +7,7 @@ import { JobSearch } from '../models/JobSearch.js';
 import { llmEnabled } from '../services/agent/llm.js';
 import { searchJobs } from '../services/jobs/aggregator.js';
 import { dedupeJobs } from '../services/jobs/dedupe.js';
+import { findCachedSearch, saveSearchCache } from '../services/jobs/searchCache.js';
 import { CATEGORY_KEYS, JOB_CATEGORIES } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS, EDUCATION_LEVELS } from '../services/jobs/education.js';
 import { INDIAN_STATES } from '../services/jobs/india.js';
@@ -59,12 +60,36 @@ function serializeSearch(doc) {
 }
 
 async function runSearch(id, body) {
+  const started = Date.now();
   try {
-    const { plan, providers, items, hiddenUnverified, durationMs } = await searchJobs(body, (level, msg) => console.log(`[jobs] ${level}: ${msg}`));
+    const hit = await findCachedSearch(body).catch((err) => console.error('[jobs] cache lookup failed', err));
+    if (hit) {
+      await JobSearch.updateOne(
+        { _id: id },
+        {
+          $set: {
+            status: 'completed',
+            query: hit.plan.q,
+            planner: 'saved',
+            providers: hit.providers,
+            resultCount: hit.jobs.length,
+            hiddenUnverified: hit.hiddenUnverified,
+            durationMs: Date.now() - started,
+            cached: true,
+            cachedAt: hit.cachedAt,
+            jobs: hit.jobs,
+          },
+        },
+      );
+      return;
+    }
+    const result = await searchJobs(body, (level, msg) => console.log(`[jobs] ${level}: ${msg}`));
+    const { plan, providers, items, hiddenUnverified, durationMs } = result;
     await JobSearch.updateOne(
       { _id: id },
       { $set: { status: 'completed', query: plan.q, planner: plan.planner, providers, resultCount: items.length, hiddenUnverified, durationMs, jobs: items.map((j) => j._id) } },
     );
+    await saveSearchCache(body, result).catch((err) => console.error('[jobs] cache save failed', err));
   } catch (err) {
     console.error('[jobs] search failed', err);
     await JobSearch.updateOne({ _id: id }, { $set: { status: 'failed', error: 'The job search failed. Please try again.' } });

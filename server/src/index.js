@@ -5,6 +5,7 @@ import { AutoImportRule } from './models/AutoImportRule.js';
 import { JobPosting } from './models/JobPosting.js';
 import { JobSearch } from './models/JobSearch.js';
 import { startAutoImport } from './services/jobs/autoImport.js';
+import { startCleanup } from './services/jobs/cleanup.js';
 import { identityKey } from './services/jobs/dedupe.js';
 import { getSettings } from './services/settings.js';
 
@@ -18,3 +19,4 @@ if (missing.length) {
 await getSettings({ fresh: true });
 createApp().listen(env.port, () => console.log(`[api] listening on http://localhost:${env.port}`));
 startAutoImport();
+startCleanup();

@@ -5,6 +5,7 @@ import { AutoImportRule } from '../../models/AutoImportRule.js';
 import { JobPosting } from '../../models/JobPosting.js';
 import { autoImportAllowance } from '../limits.js';
 import { searchJobs } from './aggregator.js';
+import { saveSearchCache } from './searchCache.js';
 import { CATEGORY_KEYS, detectCategory } from './categories.js';
 import { canonicalUrl, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
 
@@ -86,7 +87,7 @@ export async function runImportRule(rule, { postedBy, trigger = 'schedule', user
   const postedIds = [];
   const cap = Math.min(rule.maxJobs, maxPosts);
   try {
-    const { items } = await searchJobs({
+    const input = {
       prompt: rule.prompt,
       level: rule.level || undefined,
       category: rule.category,
@@ -95,7 +96,10 @@ export async function runImportRule(rule, { postedBy, trigger = 'schedule', user
       city: rule.city,
       postedWithin: 30,
       verifiedOnly: true,
-    });
+    };
+    const result = await searchJobs(input);
+    const { items } = result;
+    if (input.level) await saveSearchCache(input, result).catch((err) => console.error('[auto-import] cache save failed', err));
     stats.found = items.length;
     const seen = new Set();
     for (const item of items) {
