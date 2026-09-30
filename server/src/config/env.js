@@ -67,7 +67,7 @@ export const env = {
   cleanupTickMs: Math.max(60_000, Number(process.env.CLEANUP_TICK_MS || 3_600_000)),
 
   crawlTimeoutMs: Number(process.env.CRAWL_TIMEOUT_MS || 10000),
-  dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 50),
+  dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 5),
   jobEnrichLimit: Number(process.env.JOB_ENRICH_LIMIT || 12),
   jobSearchBudgetMs: Number(process.env.JOB_SEARCH_BUDGET_MS || 40000),
 };

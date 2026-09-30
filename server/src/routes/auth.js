@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { User } from '../models/User.js';
 import { requireAuth, signToken } from '../middleware/auth.js';
+import { profileSchema } from '../services/profile.js';
 import { HttpError } from '../utils/httpError.js';
 
 const router = Router();
@@ -81,6 +82,21 @@ router.post('/dev', async (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
+  res.json({ user: req.user.toPublic() });
+});
+
+router.put('/profile', requireAuth, async (req, res) => {
+  const profile = profileSchema.parse(req.body);
+  if (await User.exists({ phone: profile.phone, _id: { $ne: req.user._id } })) {
+    throw new HttpError(409, 'This mobile number is already registered with another account');
+  }
+  Object.assign(req.user, profile, { profileUpdatedAt: new Date() });
+  try {
+    await req.user.save();
+  } catch (err) {
+    if (err?.code === 11000) throw new HttpError(409, 'This mobile number is already registered with another account');
+    throw err;
+  }
   res.json({ user: req.user.toPublic() });
 });
 

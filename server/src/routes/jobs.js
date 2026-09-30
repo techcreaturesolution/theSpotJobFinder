@@ -12,6 +12,7 @@ import { CATEGORY_KEYS, JOB_CATEGORIES } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS, EDUCATION_LEVELS } from '../services/jobs/education.js';
 import { INDIAN_STATES } from '../services/jobs/india.js';
 import { searchQuota } from '../services/limits.js';
+import { needsProfile } from '../services/profile.js';
 import { jobProviders } from '../services/jobs/providers.js';
 import { AD_EVENTS, adGateInfo, newAdGate, recordAdEvent } from '../services/videoAd.js';
 import { HttpError } from '../utils/httpError.js';
@@ -104,6 +105,7 @@ async function ownSearch(req) {
 
 router.post('/search', searchLimiter, async (req, res) => {
   const body = searchSchema.parse(req.body);
+  if (needsProfile(req.user)) throw new HttpError(403, 'Please complete your profile (name, mobile number, city, experience and education) before searching');
   const quota = await searchQuota(req.user);
   if (quota.remaining === 0) {
     throw new HttpError(429, quota.limit === 0 ? 'Job search is paused for your account. Please contact support.' : `Daily job search limit (${quota.limit}) reached. Try again tomorrow.`);
