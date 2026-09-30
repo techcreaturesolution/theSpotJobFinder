@@ -28,7 +28,7 @@ export default function Jobs() {
   const [history, setHistory] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [current, setCurrent] = useState(null);
-  const [unlockTick, setUnlockTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState({ text: '', platform: '', contact: false });
@@ -67,9 +67,9 @@ export default function Jobs() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [activeId, unlockTick]);
+  }, [activeId, refreshTick]);
 
-  const onUnlocked = useCallback(() => setUnlockTick((n) => n + 1), []);
+  const onUnlocked = useCallback(() => setRefreshTick((n) => n + 1), []);
 
   const set = (k) => (e) => {
     const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
@@ -105,6 +105,7 @@ export default function Jobs() {
     setFilter({ text: '', platform: '', contact: false });
     setCurrent(null);
     setActiveId(s._id);
+    if (s._id === activeId) setRefreshTick((n) => n + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
