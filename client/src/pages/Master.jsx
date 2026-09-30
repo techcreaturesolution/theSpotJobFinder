@@ -3,7 +3,7 @@ import { api, errMsg } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const TABS = { overview: 'Overview', clients: 'Clients', limits: 'Limits & AI agents', runs: 'Agent runs' };
-const AGENT_LABEL = { auto_import: 'AI auto-import', ai_extract: 'AI import (paste / link)' };
+const AGENT_LABEL = { auto_import: 'AI auto-import', ai_extract: 'AI import (paste / link)', cleanup: 'Closed-job cleanup' };
 const when = (d) => (d ? new Date(d).toLocaleString() : '—');
 
 function Stat({ label, value, hint }) {
@@ -39,6 +39,13 @@ function Overview({ data }) {
           value={!system.schedulerEnabled ? 'Disabled on server' : ai.autoImportEnabled ? 'On' : 'Paused'}
           hint={`Checks rules every ${system.schedulerTickMinutes} min · last run ${when(lastAutoImport?.createdAt)}`}
         />
+        <Stat
+          label="Saved searches"
+          value={settings.cache?.enabled ? data.savedSearches : 'Off'}
+          hint={`${searches.savedHitsToday} of today's searches answered from saved results (no AI agent run)`}
+        />
+        <Stat label="Jobs stored" value={data.storedJobs} hint={`${data.closedJobs} closed or expired waiting for cleanup`} />
+        <Stat label="Closed jobs removed today" value={agents.cleanup.removed} hint={settings.cleanup?.enabled === false ? 'Automatic cleanup is off' : 'Cleanup runs every hour'} />
       </div>
       <p className="text-xs text-slate-500">Days start at midnight India time (IST).</p>
     </div>
@@ -260,15 +267,18 @@ function Limits({ overview, onSaved, setError }) {
     dailySearchLimit: overview.settings.dailySearchLimit,
     staffUnlimitedSearch: overview.settings.staffUnlimitedSearch,
     ai: { ...overview.settings.ai },
+    cache: { enabled: true, ttlHours: 12, ...overview.settings.cache },
+    cleanup: { enabled: true, ...overview.settings.cleanup },
   }));
   const [saved, setSaved] = useState('');
   const [running, setRunning] = useState(false);
   const setAi = (k) => (v) => setForm((f) => ({ ...f, ai: { ...f.ai, [k]: v } }));
-  const { ai } = form;
+  const setGroup = (g, k) => (v) => setForm((f) => ({ ...f, [g]: { ...f[g], [k]: v } }));
+  const { ai, cache, cleanup } = form;
 
   const save = async () => {
     try {
-      await api.put('/master/settings', { dailySearchLimit: form.dailySearchLimit, staffUnlimitedSearch: form.staffUnlimitedSearch, ai });
+      await api.put('/master/settings', { dailySearchLimit: form.dailySearchLimit, staffUnlimitedSearch: form.staffUnlimitedSearch, ai, cache, cleanup });
       setError('');
       setSaved('Saved. New limits apply within 30 seconds.');
       onSaved();
@@ -289,6 +299,19 @@ function Limits({ overview, onSaved, setError }) {
       setRunning(false);
     }
   };
+
+  const act = async (fn, message) => {
+    try {
+      const { data } = await fn();
+      setSaved(message(data));
+      setError('');
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
+  const runCleanup = () => act(() => api.post('/master/agents/cleanup/run'), (d) => `Removed ${d.removed} closed or expired job(s).`);
+  const clearSaved = () => act(() => api.delete('/master/saved-searches'), (d) => `Cleared ${d.removed} saved search(es). The next searches run the AI agent again.`);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -318,6 +341,31 @@ function Limits({ overview, onSaved, setError }) {
           <NumberField label="Auto-imported jobs per day" value={ai.autoImportDailyPosts} onChange={setAi('autoImportDailyPosts')} />
         </div>
         <p className="text-xs text-slate-500">When a daily limit is reached, the scheduler and admins wait until midnight IST. Your own manual runs are not counted against it.</p>
+      </div>
+      <div className="card space-y-4">
+        <h2 className="font-semibold">Saved search results</h2>
+        <Toggle
+          label="Reuse saved results"
+          hint="When someone repeats a search (e.g. new jobs in Ahmedabad), they get the saved jobs instead of a new AI agent run. Closed jobs are left out, and new portal jobs are added."
+          checked={cache.enabled}
+          onChange={setGroup('cache', 'enabled')}
+        />
+        <NumberField label="Keep results for (hours)" hint="After this the next search runs the AI agent and re-verifies every job. 1–168." value={cache.ttlHours} onChange={setGroup('cache', 'ttlHours')} />
+        <button type="button" className="btn-secondary" onClick={clearSaved}>
+          Clear saved results
+        </button>
+      </div>
+      <div className="card space-y-4">
+        <h2 className="font-semibold">Closed jobs</h2>
+        <Toggle
+          label="Delete closed and expired jobs every hour"
+          hint="Removes jobs whose source page closed, whose last date passed, or that no job site has listed for 21 days. Jobs you hid yourself in Admin are kept."
+          checked={cleanup.enabled}
+          onChange={setGroup('cleanup', 'enabled')}
+        />
+        <button type="button" className="btn-secondary" onClick={runCleanup}>
+          Remove closed jobs now
+        </button>
       </div>
       <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
         <button type="button" className="btn-primary" onClick={save}>
@@ -377,6 +425,7 @@ function Runs({ setError }) {
                   <th className="th">Runs</th>
                   <th className="th">Jobs posted</th>
                   <th className="th">Drafts</th>
+                  <th className="th">Jobs removed</th>
                   <th className="th">Failed</th>
                 </tr>
               </thead>
@@ -388,12 +437,13 @@ function Runs({ setError }) {
                     <td className="td">{d.runs}</td>
                     <td className="td">{d.posted}</td>
                     <td className="td">{d.drafts}</td>
+                    <td className="td">{d.removed}</td>
                     <td className="td">{d.failed}</td>
                   </tr>
                 ))}
                 {!data.daily.length && (
                   <tr>
-                    <td className="td py-6 text-center text-slate-500" colSpan={6}>
+                    <td className="td py-6 text-center text-slate-500" colSpan={7}>
                       No agent runs in this period.
                     </td>
                   </tr>
@@ -429,7 +479,9 @@ function Runs({ setError }) {
                     <td className="td text-xs">
                       {r.agent === 'auto_import'
                         ? `${r.found} found · ${r.posted} posted · ${r.duplicates} duplicates · ${r.skipped} skipped`
-                        : `${r.drafts} draft(s)${r.method ? ` · ${r.method}` : ''}`}
+                        : r.agent === 'cleanup'
+                          ? `${r.removed} closed job(s) removed`
+                          : `${r.drafts} draft(s)${r.method ? ` · ${r.method}` : ''}`}
                     </td>
                     <td className="td text-xs">{r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)} s` : '—'}</td>
                   </tr>

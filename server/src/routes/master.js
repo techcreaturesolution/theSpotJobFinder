@@ -5,9 +5,11 @@ import { AGENTS, AgentRun } from '../models/AgentRun.js';
 import { AutoImportRule } from '../models/AutoImportRule.js';
 import { JobPosting } from '../models/JobPosting.js';
 import { JobSearch } from '../models/JobSearch.js';
+import { CACHE_MAX_HOURS, SearchCache } from '../models/SearchCache.js';
 import { User } from '../models/User.js';
 import { llmConfigured } from '../services/agent/llm.js';
 import { runAllActiveRules } from '../services/jobs/autoImport.js';
+import { closedJobFilter, removeClosedJobs } from '../services/jobs/cleanup.js';
 import { effectiveSearchLimit, startOfDay } from '../services/limits.js';
 import { getSettings, updateSettings } from '../services/settings.js';
 import { HttpError } from '../utils/httpError.js';
@@ -21,8 +23,9 @@ const countBy = async (Model, match, field) => {
 
 router.get('/overview', async (_req, res) => {
   const today = startOfDay();
-  const [settings, users, admins, masters, blocked, newUsersToday, searchesToday, searchesTotal, seekersToday, portalJobs, activeRules, runsToday, lastRun] = await Promise.all([
-    getSettings({ fresh: true }),
+  const settings = await getSettings({ fresh: true });
+  const cacheSince = new Date(Date.now() - (settings.cache?.ttlHours || 0) * 3600_000);
+  const [users, admins, masters, blocked, newUsersToday, searchesToday, searchesTotal, seekersToday, portalJobs, activeRules, runsToday, lastRun, savedSearches, savedHitsToday, storedJobs, closedJobs] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ role: 'admin' }),
     User.countDocuments({ role: 'master' }),
@@ -35,17 +38,33 @@ router.get('/overview', async (_req, res) => {
     AutoImportRule.countDocuments({ active: true }),
     AgentRun.aggregate([
       { $match: { createdAt: { $gte: today } } },
-      { $group: { _id: '$agent', runs: { $sum: 1 }, posted: { $sum: '$posted' }, drafts: { $sum: '$drafts' }, failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } } } },
+      {
+        $group: {
+          _id: '$agent',
+          runs: { $sum: 1 },
+          posted: { $sum: '$posted' },
+          drafts: { $sum: '$drafts' },
+          removed: { $sum: '$removed' },
+          failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+        },
+      },
     ]),
     AgentRun.findOne({ agent: 'auto_import' }).sort({ createdAt: -1 }).lean(),
+    SearchCache.countDocuments({ refreshedAt: { $gte: cacheSince } }),
+    JobSearch.countDocuments({ createdAt: { $gte: today }, cached: true }),
+    JobPosting.countDocuments(),
+    JobPosting.countDocuments(closedJobFilter()),
   ]);
-  const agents = Object.fromEntries(AGENTS.map((a) => [a, { runs: 0, posted: 0, drafts: 0, failed: 0 }]));
-  for (const r of runsToday) agents[r._id] = { runs: r.runs, posted: r.posted, drafts: r.drafts, failed: r.failed };
+  const agents = Object.fromEntries(AGENTS.map((a) => [a, { runs: 0, posted: 0, drafts: 0, removed: 0, failed: 0 }]));
+  for (const r of runsToday) agents[r._id] = { runs: r.runs, posted: r.posted, drafts: r.drafts, removed: r.removed, failed: r.failed };
   res.json({
     today,
     users: { total: users, admins, masters, blocked, newToday: newUsersToday, searchingToday: seekersToday.length },
-    searches: { today: searchesToday, total: searchesTotal },
+    searches: { today: searchesToday, total: searchesTotal, savedHitsToday },
+    savedSearches,
     portalJobs,
+    storedJobs,
+    closedJobs,
     activeRules,
     agents,
     lastAutoImport: lastRun,
@@ -74,6 +93,8 @@ const settingsSchema = z
       })
       .partial()
       .strict(),
+    cache: z.object({ enabled: z.boolean(), ttlHours: z.coerce.number().int().min(1).max(CACHE_MAX_HOURS) }).partial().strict(),
+    cleanup: z.object({ enabled: z.boolean() }).partial().strict(),
   })
   .partial()
   .strict();
@@ -167,13 +188,14 @@ router.get('/agent-runs', async (req, res) => {
           runs: { $sum: 1 },
           posted: { $sum: '$posted' },
           drafts: { $sum: '$drafts' },
+          removed: { $sum: '$removed' },
           failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
         },
       },
       { $sort: { '_id.day': -1 } },
     ]),
   ]);
-  res.json({ items, daily: daily.map((d) => ({ day: d._id.day, agent: d._id.agent, runs: d.runs, posted: d.posted, drafts: d.drafts, failed: d.failed })), since });
+  res.json({ items, daily: daily.map((d) => ({ day: d._id.day, agent: d._id.agent, runs: d.runs, posted: d.posted, drafts: d.drafts, removed: d.removed, failed: d.failed })), since });
 });
 
 let runAllBusy = false;
@@ -190,6 +212,29 @@ router.post('/agents/auto-import/run', async (req, res) => {
       runAllBusy = false;
     });
   res.status(202).json({ started: rules });
+});
+
+router.get('/saved-searches', async (_req, res) => {
+  const { cache } = await getSettings();
+  const since = new Date(Date.now() - (cache?.ttlHours || 0) * 3600_000);
+  const items = await SearchCache.find().sort({ refreshedAt: -1 }).limit(200).select('label refreshedAt hits lastHitAt jobs').lean();
+  res.json({ items: items.map(({ jobs, ...d }) => ({ ...d, jobCount: jobs.length, fresh: d.refreshedAt >= since })) });
+});
+
+router.delete('/saved-searches', async (_req, res) => {
+  const r = await SearchCache.deleteMany({});
+  res.json({ removed: r.deletedCount });
+});
+
+let cleanupBusy = false;
+router.post('/agents/cleanup/run', async (req, res) => {
+  if (cleanupBusy) throw new HttpError(409, 'Cleanup is already running');
+  cleanupBusy = true;
+  try {
+    res.json(await removeClosedJobs({ trigger: 'manual', userId: req.user._id }));
+  } finally {
+    cleanupBusy = false;
+  }
 });
 
 export default router;

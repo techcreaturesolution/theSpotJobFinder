@@ -222,7 +222,7 @@ export async function searchJobs(input, log = () => {}) {
       }),
     ),
   ]);
-  if (closedPortal.length) await JobPosting.updateMany({ _id: { $in: closedPortal } }, { $set: { active: false, 'verification.checkedAt': new Date() } });
+  if (closedPortal.length) await JobPosting.updateMany({ _id: { $in: closedPortal } }, { $set: { active: false, closedAt: new Date(), 'verification.checkedAt': new Date() } });
 
   const now = new Date();
   if (fresh.size) {
@@ -235,7 +235,7 @@ export async function searchJobs(input, log = () => {}) {
         fields.phones = uniquePhones(fields.phones);
         const dbOnly = recheck.has(j.key);
         if (dbOnly && !rechecked.has(j.key)) fields.verification = verification('unverified', 'not_rechecked');
-        return { updateOne: { filter: { key: j.key }, update: { $set: { ...fields, active: !j.expired, ...(dbOnly ? {} : { lastSeenAt: now }) }, $setOnInsert: { origin: 'aggregated' } }, upsert: true } };
+        return { updateOne: { filter: { key: j.key }, update: { $set: { ...fields, active: !j.expired, ...(j.expired ? { closedAt: now } : {}), ...(dbOnly ? {} : { lastSeenAt: now }) }, $setOnInsert: { origin: 'aggregated' } }, upsert: true } };
       }),
       { ordered: false },
     );

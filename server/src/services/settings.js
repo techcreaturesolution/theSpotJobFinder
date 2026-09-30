@@ -25,7 +25,7 @@ export async function getSettings({ fresh = false } = {}) {
 export async function updateSettings(patch, userId) {
   const $set = { updatedBy: userId };
   for (const [k, v] of Object.entries(patch)) {
-    if (k === 'ai') for (const [ak, av] of Object.entries(v || {})) $set[`ai.${ak}`] = av;
+    if (v && typeof v === 'object') for (const [sk, sv] of Object.entries(v)) $set[`${k}.${sk}`] = sv;
     else $set[k] = v;
   }
   const doc = await Settings.findOneAndUpdate({ _id: 'global' }, { $set }, { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true }).lean();

@@ -48,6 +48,7 @@ const jobPostingSchema = new mongoose.Schema(
     },
     lastSeenAt: { type: Date, default: Date.now, index: true },
     active: { type: Boolean, default: true },
+    closedAt: { type: Date, default: null },
     applyClicks: { type: Number, default: 0 },
     postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
