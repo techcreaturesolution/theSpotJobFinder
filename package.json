@@ -10,6 +10,7 @@
     "lint": "npm --prefix server run lint && npm --prefix client run lint",
     "test": "npm --prefix server test",
     "build": "npm --prefix client run build",
-    "start": "NODE_ENV=production npm --prefix server start"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   }
 }
