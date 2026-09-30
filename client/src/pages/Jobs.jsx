@@ -20,7 +20,7 @@ const PROVIDER_LABEL = {
   'web:bing_html': 'Web search (Bing)',
 };
 
-const EMPTY_FORM = { level: 'fresher', prompt: '', category: '', education: '', state: '', city: '', postedWithin: 30, verifiedOnly: true };
+const EMPTY_FORM = { level: 'fresher', prompt: '', category: '', education: '', state: '', city: '', postedWithin: 30, verifiedOnly: false };
 
 export default function Jobs() {
   const [meta, setMeta] = useState(null);
