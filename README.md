@@ -17,7 +17,9 @@ Other features:
 - **Google ads only.** Google AdSense display ads and Google video ads (IMA) on the web, Google AdMob banner and rewarded video ads in the mobile app. There is no admin form for creating or approving ads.
 - **Mandatory 1-minute video ad before every search result.** Watch time is tracked on the server, so results stay locked until the ad has actually played. In the app, an AdMob rewarded ad unlocks results once Google confirms the reward to the server.
 - **Flutter mobile app** (`mobile/`) for Android and iOS, using the same API.
-- **Admin panel** for portal jobs, users, stats and the Google ads status.
+- **AI job posting.** In Admin → Jobs, paste a job advert (WhatsApp, X, LinkedIn, Facebook, newspaper or email text) or a job page link. The AI agent fills the job form using only facts written in the advert (several jobs in one post become several drafts). You review each draft and post it, or post all ready drafts at once. Without `OPENAI_API_KEY`, the job page's `JobPosting` data or pattern matching is used instead.
+- **AI auto-import (scheduled).** In Admin → AI auto-import, add rules (keywords, category, fresher/experienced, education, state, city, how often, max jobs per run). On schedule, the agent runs a verified search and posts the matching jobs to the portal automatically. It only posts jobs that were confirmed on their source page, are still open, and have a company name and an apply link or HR email. Jobs already on the portal (same title + company + city, or the same source page, including hidden ones) are skipped. On every search, each imported job's source page is checked again, and jobs that have closed are hidden.
+- **Admin panel** for portal jobs, AI import, users, stats and the Google ads status.
 
 ## Stack
 
@@ -133,6 +135,8 @@ To turn on real ads:
 | `GET /api/adsense/config` · `GET /ads.txt` | AdSense / video ad / AdMob config, ads.txt |
 | `GET /api/admob/ssv` | AdMob rewarded-ad server-side verification callback |
 | `/api/admin/{stats,jobs,users}` | Admin |
+| `POST /api/admin/jobs/extract` `{ text?, url? }` | AI job posting: returns reviewable drafts (each has `missing`, `duplicate`, `closed`) |
+| `GET/POST /api/admin/auto-import` · `PUT/DELETE /api/admin/auto-import/:id` · `POST /api/admin/auto-import/:id/run` | AI auto-import rules · run a rule now |
 
 ## Scripts
 

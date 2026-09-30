@@ -6,7 +6,7 @@ import { llmEnabled, llmJson } from '../agent/llm.js';
 import { categoryByKey, detectCategory } from './categories.js';
 import { detectEducation, educationByKey, educationMatches, qualifyingKeys } from './education.js';
 import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
-import { enrichJob } from './enrich.js';
+import { enrichJob, sourceStillOpen } from './enrich.js';
 import { splitLocation } from './india.js';
 import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, platformOf } from './parse.js';
 import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
@@ -194,8 +194,20 @@ export async function searchJobs(input, log = () => {}) {
   const limit = pLimit(4);
   const expired = new Set();
   const rechecked = new Set();
-  await Promise.all(
-    toEnrich.map((job) =>
+  const portalSources = [...byKey.values()].filter((d) => d.importMethod && d.sourceUrl).slice(0, env.jobEnrichLimit);
+  const closedPortal = [];
+  await Promise.all([
+    ...portalSources.map((doc) =>
+      limit(async () => {
+        if (Date.now() > deadline - 3000) return;
+        const open = await withDeadline(sourceStillOpen(doc.sourceUrl), deadline - 1000, null);
+        if (open === false) {
+          closedPortal.push(doc._id);
+          byKey.delete(doc.key);
+        }
+      }),
+    ),
+    ...toEnrich.map((job) =>
       limit(async () => {
         if (Date.now() > deadline - 3000) return;
         const enriched = await withDeadline(
@@ -209,7 +221,8 @@ export async function searchJobs(input, log = () => {}) {
         fresh.set(job.key, { ...enriched, key: job.key });
       }),
     ),
-  );
+  ]);
+  if (closedPortal.length) await JobPosting.updateMany({ _id: { $in: closedPortal } }, { $set: { active: false, 'verification.checkedAt': new Date() } });
 
   const now = new Date();
   if (fresh.size) {

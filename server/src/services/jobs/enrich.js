@@ -10,12 +10,12 @@ import { agentExtract, CLOSED_RE, titleMatches, verification } from './verify.js
 
 const NO_FETCH = /(^|\.)(google\.[a-z.]+|x\.com|twitter\.com|facebook\.com|instagram\.com|indeed\.com|glassdoor\.[a-z.]+)$/i;
 
-function fetchable(url) {
+export function fetchable(url) {
   const d = domainOf(url);
   return Boolean(d && !NO_FETCH.test(d));
 }
 
-async function fetchJobPage(url) {
+export async function fetchJobPage(url) {
   const res = await http.get(url, { responseType: 'text', timeout: 8000, headers: { Accept: 'text/html,application/xhtml+xml' } });
   const html = String(res.data || '');
   const $ = cheerio.load(html);
@@ -143,4 +143,15 @@ export async function enrichJob(job, place) {
   out.phones = uniquePhones(out.phones).slice(0, 4);
   out.enrichedAt = new Date();
   return out;
+}
+
+export async function sourceStillOpen(url) {
+  if (!url || !fetchable(url)) return null;
+  try {
+    const page = await fetchJobPage(url);
+    if (page.ld?.validThrough && new Date(page.ld.validThrough).getTime() < Date.now()) return false;
+    return !CLOSED_RE.test(`${page.title} ${page.text.slice(0, 4000)}`);
+  } catch (err) {
+    return [404, 410].includes(err.response?.status) ? false : null;
+  }
 }

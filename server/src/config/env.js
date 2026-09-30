@@ -59,6 +59,11 @@ export const env = {
     ios: { banner: process.env.ADMOB_IOS_BANNER_ID || '', rewarded: process.env.ADMOB_IOS_REWARDED_ID || '' },
   },
 
+  autoImport: {
+    enabled: bool(process.env.AUTO_IMPORT_ENABLED, true),
+    tickMs: Math.max(60_000, Number(process.env.AUTO_IMPORT_TICK_MS || 600_000)),
+  },
+
   crawlTimeoutMs: Number(process.env.CRAWL_TIMEOUT_MS || 10000),
   dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 50),
   jobEnrichLimit: Number(process.env.JOB_ENRICH_LIMIT || 12),

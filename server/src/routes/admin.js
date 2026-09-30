@@ -2,12 +2,17 @@ import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { JOB_LEVELS, JobPosting } from '../models/JobPosting.js';
+import { AutoImportRule } from '../models/AutoImportRule.js';
 import { JobSearch } from '../models/JobSearch.js';
 import { User } from '../models/User.js';
 import { CATEGORY_KEYS } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS } from '../services/jobs/education.js';
-import { identityKey, uniquePhones } from '../services/jobs/dedupe.js';
+import { claimRule, runImportRule } from '../services/jobs/autoImport.js';
+import { canonicalUrl, identityKey, uniquePhones } from '../services/jobs/dedupe.js';
+import { extractJobDrafts } from '../services/jobs/importer.js';
+import { INDIAN_STATES } from '../services/jobs/india.js';
 import { extractPhones } from '../services/jobs/parse.js';
+import { llmEnabled } from '../services/agent/llm.js';
 import { HttpError } from '../utils/httpError.js';
 
 const router = Router();
@@ -37,16 +42,20 @@ const portalJobSchema = z.object({
   phone: z.string().trim().max(40).default(''),
   companyWebsite: optionalUrl,
   applyUrl: optionalUrl,
+  sourceUrl: optionalUrl,
+  importMethod: z.union([z.enum(['ai_paste', 'ai_auto']), z.literal('')]).default(''),
   salary: z.string().trim().max(80).default(''),
   employmentType: z.string().trim().max(40).default(''),
   active: z.boolean().default(true),
 });
 
 function toPortalJob(d) {
-  const { email, phone, level, ...rest } = d;
+  const { email, phone, level, importMethod, ...rest } = d;
   return {
     ...rest,
     level: level || null,
+    importMethod: importMethod || null,
+    sourceKey: canonicalUrl(d.sourceUrl),
     location: [d.city, d.state, 'India'].filter(Boolean).join(', '),
     emails: email ? [email.toLowerCase()] : [],
     phones: phone ? uniquePhones(extractPhones(phone).length ? extractPhones(phone) : [phone]) : [],
@@ -81,6 +90,23 @@ async function assertNotDuplicate(data, exceptId) {
   return dedupeKey;
 }
 
+const extractSchema = z
+  .object({ text: z.string().max(30000).default(''), url: z.union([httpUrl, z.literal('')]).default('') })
+  .refine((d) => d.text.trim().length >= 30 || d.url, { message: 'Paste the job post text or a job page link', path: ['text'] });
+
+router.post('/jobs/extract', async (req, res) => {
+  const body = extractSchema.parse(req.body);
+  const result = await extractJobDrafts(body);
+  const keys = result.drafts.map((d) => identityKey(d)).filter(Boolean);
+  const dups = keys.length ? await JobPosting.find({ origin: 'portal', dedupeKey: { $in: keys } }).select('dedupeKey').lean() : [];
+  const dupKeys = new Set(dups.map((d) => d.dedupeKey));
+  res.json({
+    method: result.method,
+    ai: llmEnabled() ? 'openai' : 'rules',
+    drafts: result.drafts.map((d) => ({ ...d, importMethod: 'ai_paste', duplicate: dupKeys.has(identityKey(d)) })),
+  });
+});
+
 router.post('/jobs', async (req, res) => {
   const data = toPortalJob(portalJobSchema.parse(req.body));
   const dedupeKey = await assertNotDuplicate(data);
@@ -103,6 +129,47 @@ router.delete('/jobs/:id', async (req, res) => {
   const r = await JobPosting.deleteOne({ _id: req.params.id, origin: 'portal' });
   if (!r.deletedCount) throw new HttpError(404, 'Job not found');
   res.json({ ok: true });
+});
+
+const ruleSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  prompt: z.string().trim().max(200).default(''),
+  category: z.union([z.enum(CATEGORY_KEYS), z.literal('')]).default(''),
+  level: z.union([z.enum(JOB_LEVELS), z.literal('')]).default(''),
+  education: z.union([z.enum(EDUCATION_KEYS), z.literal('')]).default(''),
+  state: z.union([z.enum(INDIAN_STATES), z.literal('')]).default(''),
+  city: z.string().trim().max(60).default(''),
+  everyHours: z.coerce.number().int().min(1).max(168).default(24),
+  maxJobs: z.coerce.number().int().min(1).max(30).default(10),
+  active: z.boolean().default(true),
+}).refine((d) => d.prompt.length >= 2 || d.category, { message: 'Enter a job keyword or pick a category', path: ['prompt'] });
+
+router.get('/auto-import', async (_req, res) => {
+  res.json({ items: await AutoImportRule.find().sort({ createdAt: -1 }).lean() });
+});
+
+router.post('/auto-import', async (req, res) => {
+  const rule = await AutoImportRule.create({ ...ruleSchema.parse(req.body), createdBy: req.user._id });
+  res.status(201).json({ rule });
+});
+
+router.put('/auto-import/:id', async (req, res) => {
+  const rule = await AutoImportRule.findByIdAndUpdate(req.params.id, ruleSchema.parse(req.body), { returnDocument: 'after', runValidators: true });
+  if (!rule) throw new HttpError(404, 'Rule not found');
+  res.json({ rule });
+});
+
+router.delete('/auto-import/:id', async (req, res) => {
+  const r = await AutoImportRule.deleteOne({ _id: req.params.id });
+  if (!r.deletedCount) throw new HttpError(404, 'Rule not found');
+  res.json({ ok: true });
+});
+
+router.post('/auto-import/:id/run', async (req, res) => {
+  if (!(await AutoImportRule.exists({ _id: req.params.id }))) throw new HttpError(404, 'Rule not found');
+  const rule = await claimRule({ _id: req.params.id });
+  if (!rule) throw new HttpError(409, 'This rule is already running');
+  res.json({ result: await runImportRule(rule, { postedBy: req.user._id }) });
 });
 
 router.get('/users', async (_req, res) => {
