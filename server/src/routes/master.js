@@ -6,11 +6,12 @@ import { AutoImportRule } from '../models/AutoImportRule.js';
 import { JobPosting } from '../models/JobPosting.js';
 import { JobSearch } from '../models/JobSearch.js';
 import { SearchCache } from '../models/SearchCache.js';
-import { User } from '../models/User.js';
+import { ROLES, User } from '../models/User.js';
 import { llmConfigured } from '../services/agent/llm.js';
 import { runAllActiveRules } from '../services/jobs/autoImport.js';
 import { closedJobFilter, removeClosedJobs } from '../services/jobs/cleanup.js';
 import { educationByKey } from '../services/jobs/education.js';
+import { jobProviders } from '../services/jobs/providers.js';
 import { effectiveSearchLimit, startOfDay } from '../services/limits.js';
 import { isProfileComplete } from '../services/profile.js';
 import { getSettings, updateSettings } from '../services/settings.js';
@@ -27,7 +28,7 @@ const countBy = async (Model, match, field) => {
 router.get('/overview', async (_req, res) => {
   const today = startOfDay();
   const settings = await getSettings({ fresh: true });
-  const [users, admins, masters, blocked, newUsersToday, searchesToday, searchesTotal, seekersToday, portalJobs, activeRules, runsToday, lastRun, savedSearches, savedHitsToday, storedJobs, closedJobs] = await Promise.all([
+  const [users, admins, masters, blocked, newUsersToday, searchesToday, searchesTotal, seekersToday, portalJobs, activeRules, runsToday, lastRun, savedSearches, savedHitsToday, storedJobs, closedJobs, employers, pendingEmployerJobs] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ role: 'admin' }),
     User.countDocuments({ role: 'master' }),
@@ -56,22 +57,25 @@ router.get('/overview', async (_req, res) => {
     JobSearch.countDocuments({ createdAt: { $gte: today }, cached: true }),
     JobPosting.countDocuments(),
     JobPosting.countDocuments(closedJobFilter()),
+    User.countDocuments({ role: 'employer' }),
+    JobPosting.countDocuments({ origin: 'portal', 'review.status': 'pending' }),
   ]);
   const agents = Object.fromEntries(AGENTS.map((a) => [a, { runs: 0, posted: 0, drafts: 0, removed: 0, failed: 0 }]));
   for (const r of runsToday) agents[r._id] = { runs: r.runs, posted: r.posted, drafts: r.drafts, removed: r.removed, failed: r.failed };
   res.json({
     today,
-    users: { total: users, admins, masters, blocked, newToday: newUsersToday, searchingToday: seekersToday.length },
+    users: { total: users, admins, masters, employers, blocked, newToday: newUsersToday, searchingToday: seekersToday.length },
     searches: { today: searchesToday, total: searchesTotal, savedHitsToday },
     savedSearches,
     portalJobs,
+    pendingEmployerJobs,
     storedJobs,
     closedJobs,
     activeRules,
     agents,
     lastAutoImport: lastRun,
     settings,
-    system: { openaiConfigured: llmConfigured(), schedulerEnabled: env.autoImport.enabled, schedulerTickMinutes: Math.round(env.autoImport.tickMs / 60_000) },
+    system: { openaiConfigured: llmConfigured(), jobApis: jobProviders().apis, schedulerEnabled: env.autoImport.enabled, schedulerTickMinutes: Math.round(env.autoImport.tickMs / 60_000) },
   });
 });
 
@@ -97,6 +101,7 @@ const settingsSchema = z
       .strict(),
     cache: z.object({ enabled: z.boolean() }).partial().strict(),
     cleanup: z.object({ enabled: z.boolean() }).partial().strict(),
+    employer: z.object({ requireApproval: z.boolean(), dailyPosts: limit(1000) }).partial().strict(),
   })
   .partial()
   .strict();
@@ -107,12 +112,19 @@ router.put('/settings', async (req, res) => {
 
 const clientQuery = z.object({
   q: z.string().trim().max(100).default(''),
-  role: z.enum(['', 'user', 'admin', 'master']).default(''),
+  role: z.enum(['', ...ROLES]).default(''),
   status: z.enum(['', 'active', 'blocked']).default(''),
   profile: z.enum(['', 'complete', 'incomplete']).default(''),
 });
 
-const PROFILE_DONE = { name: { $nin: [null, ''] }, phone: { $type: 'string' }, state: { $nin: [null, ''] }, city: { $nin: [null, ''] }, level: { $nin: [null, ''] }, education: { $nin: [null, ''] } };
+const filled = { $nin: [null, ''] };
+const CONTACT_DONE = { name: filled, phone: { $type: 'string' }, state: filled, city: filled };
+const PROFILE_DONE = {
+  $or: [
+    { ...CONTACT_DONE, role: 'employer', 'company.name': filled },
+    { ...CONTACT_DONE, role: { $ne: 'employer' }, level: filled, education: filled },
+  ],
+};
 
 async function listClients(query, max) {
   const q = clientQuery.parse(query);
@@ -144,6 +156,8 @@ async function listClients(query, max) {
     level: u.level || '',
     education: u.education || '',
     educationLabel: educationByKey(u.education)?.label || u.education || '',
+    companyName: u.company?.name || '',
+    companyWebsite: u.company?.website || '',
     profileComplete: isProfileComplete(u),
     profileUpdatedAt: u.profileUpdatedAt || null,
     role: u.role,
@@ -171,6 +185,8 @@ const CSV_COLUMNS = [
   ['State', (u) => u.state],
   ['Fresher / experienced', (u) => u.level],
   ['Education', (u) => u.educationLabel],
+  ['Company', (u) => u.companyName],
+  ['Company website', (u) => u.companyWebsite],
   ['Profile complete', (u) => (u.profileComplete ? 'yes' : 'no')],
   ['Role', (u) => u.role],
   ['Status', (u) => (u.active ? 'active' : 'blocked')],
@@ -202,7 +218,7 @@ router.get('/users/:id/searches', async (req, res) => {
 router.patch('/users/:id', async (req, res) => {
   const body = z
     .object({
-      role: z.enum(['user', 'admin']).optional(),
+      role: z.enum(['user', 'employer', 'admin']).optional(),
       active: z.boolean().optional(),
       dailySearchLimit: z.union([z.null(), limit(10000)]).optional(),
     })
@@ -264,8 +280,26 @@ router.post('/agents/auto-import/run', async (req, res) => {
 });
 
 router.get('/saved-searches', async (_req, res) => {
-  const items = await SearchCache.find().sort({ refreshedAt: -1 }).limit(200).select('label refreshedAt hits lastHitAt jobs').lean();
-  res.json({ items: items.map(({ jobs, ...d }) => ({ ...d, jobCount: jobs.length })) });
+  const items = await SearchCache.find().sort({ refreshedAt: -1 }).limit(500).select('label plan providers refreshedAt hits lastHitAt jobs createdAt').lean();
+  res.json({
+    items: items.map(({ jobs, plan = {}, ...d }) => ({
+      ...d,
+      role: plan.userRole || plan.role || '',
+      level: plan.level || '',
+      category: plan.category || '',
+      education: plan.education || '',
+      educationLabel: educationByKey(plan.education)?.label || '',
+      city: plan.city || '',
+      state: plan.state || '',
+      jobCount: jobs.length,
+    })),
+  });
+});
+
+router.delete('/saved-searches/:id', async (req, res) => {
+  const r = await SearchCache.deleteOne({ _id: req.params.id });
+  if (!r.deletedCount) throw new HttpError(404, 'Saved search not found');
+  res.json({ removed: 1 });
 });
 
 router.delete('/saved-searches', async (_req, res) => {

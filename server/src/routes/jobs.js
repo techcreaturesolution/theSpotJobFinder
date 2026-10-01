@@ -60,7 +60,7 @@ function serializeSearch(doc) {
   return out;
 }
 
-async function runSearch(id, body) {
+async function runSearch(id, body, client) {
   const started = Date.now();
   try {
     const hit = await findCachedSearch(body).catch((err) => console.error('[jobs] cache lookup failed', err));
@@ -84,7 +84,7 @@ async function runSearch(id, body) {
       );
       return;
     }
-    const result = await searchJobs(body, (level, msg) => console.log(`[jobs] ${level}: ${msg}`));
+    const result = await searchJobs({ ...body, client }, (level, msg) => console.log(`[jobs] ${level}: ${msg}`));
     const { plan, providers, items, hiddenUnverified, durationMs } = result;
     await JobSearch.updateOne(
       { _id: id },
@@ -111,7 +111,7 @@ router.post('/search', searchLimiter, async (req, res) => {
     throw new HttpError(429, quota.limit === 0 ? 'Job search is paused for your account. Please contact support.' : `Daily job search limit (${quota.limit}) reached. Try again tomorrow.`);
   }
   const search = await JobSearch.create({ ...body, owner: req.user._id, query: body.prompt || body.category, adGate: newAdGate(req.user) });
-  runSearch(search._id, body);
+  runSearch(search._id, body, { ip: req.ip, userAgent: req.get('user-agent') || '' });
   res.status(201).json({ search: serializeSearch(search) });
 });
 
@@ -124,7 +124,7 @@ router.get('/searches/:id', async (req, res) => {
   const search = await ownSearch(req);
   let items = [];
   if (search.status === 'completed' && !isAdLocked(search) && search.jobs.length) {
-    const docs = await JobPosting.find({ _id: { $in: search.jobs } }).select('-key -postedBy -__v').lean();
+    const docs = await JobPosting.find({ _id: { $in: search.jobs } }).select('-key -postedBy -review -__v').lean();
     const order = new Map(search.jobs.map((id, i) => [String(id), i]));
     items = dedupeJobs(docs.sort((a, b) => order.get(String(a._id)) - order.get(String(b._id))));
   }
@@ -141,7 +141,7 @@ router.post('/searches/:id/ad', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const job = await JobPosting.findOne({ _id: req.params.id, active: true }).select('-key -postedBy').lean();
+  const job = await JobPosting.findOne({ _id: req.params.id, active: true }).select('-key -postedBy -review').lean();
   if (!job) throw new HttpError(404, 'Job not found');
   res.json({ job });
 });

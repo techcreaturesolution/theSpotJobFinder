@@ -20,11 +20,14 @@ Other features:
 - **Flutter mobile app** (`mobile/`) for Android and iOS, using the same API.
 - **AI job posting.** In Admin → Jobs, paste a job advert (WhatsApp, X, LinkedIn, Facebook, newspaper or email text) or a job page link. The AI agent fills the job form using only facts written in the advert (several jobs in one post become several drafts). You review each draft and post it, or post all ready drafts at once. Without `OPENAI_API_KEY`, the job page's `JobPosting` data or pattern matching is used instead.
 - **AI auto-import (scheduled).** In Admin → AI auto-import, add rules (keywords, category, fresher/experienced, education, state, city, how often, max jobs per run). On schedule, the agent runs a verified search and posts the matching jobs to the portal automatically. It only posts jobs that were confirmed on their source page, are still open, and have a company name and an apply link or HR email. Jobs already on the portal (same title + company + city, or the same source page, including hidden ones) are skipped. On every search, each imported job's source page is checked again, and jobs that have closed are hidden, then deleted by the daily cleanup.
-- **Admin panel** for portal jobs, AI import, AI auto-import rules, a read-only user list, stats and the Google ads status.
+- **Job listing APIs.** JSearch (RapidAPI), Adzuna (India), Jooble and Careerjet (India) each run when their key is set. They run in parallel with Google Jobs and web search, and one failing API never stops the others. Their jobs are merged with every other source, de-duplicated (same job, email, phone or apply link is shown once) and re-checked on the source page like any other listing. API data alone does not mark a job as verified.
+- **Employer job posting.** On first sign-in, a user can choose "Hire / post jobs" and fill in a company profile (name, mobile, state, city, company name, optional website and address). Employers post jobs from **My job posts**: the company name comes from the profile, and each job needs a description, city, state and an apply link, HR email or contact number. New and edited jobs wait in **Admin → Employer jobs** until an admin approves them (approval can be turned off in Master Admin), and rejected jobs show the admin's note. Only approved, open jobs appear in searches. Employers can edit, close or delete only their own jobs, and duplicate jobs are rejected.
+- **Admin panel** for portal jobs, employer job approval, AI import, AI auto-import rules, a read-only user list, stats and the Google ads status.
 - **Master Admin** (emails in `MASTER_ADMIN_EMAILS`) sees everything an admin sees, plus a Master Admin page:
   - **Overview:** users, blocked users, searches today, AI agent runs and jobs posted today, OpenAI and scheduler status.
   - **Clients:** every user with their name, email, mobile, city and state, fresher/experienced and education, searches today / total, AI runs today, last login and last search. Search by name, email, mobile or city, filter by role, status or profile completeness, download everyone as a CSV (Excel) file, see a user's recent searches, block or unblock them, make them admin or user, and set a personal daily search limit (empty = use the global limit, 0 = searching paused).
   - **Limits & AI agents:** the global daily search limit (5 per client per day by default), whether admins search without a limit, the OpenAI on/off switch, AI import on/off and daily limit per admin, AI auto-import on/off, daily run limit and daily job limit. "Run all rules now" starts every active auto-import rule.
+  - **Saved searches:** a table of every saved search (keywords, city/state, level, category, education, open jobs, times reused, saved / last used, sources) with a **Clear** button for each one.
   - **Saved search results:** every completed search is saved. When anyone repeats it (same keywords in any order and wording, level, category, education, state/city, posted-within), they get the saved jobs without a new AI agent run. Saved results have no time limit: each job stays until its last apply date passes, its source page is found closed, or (for jobs with no last date) no job site has listed it for 21 days. Portal jobs posted after the save are added. The AI agent runs again for that search only when all its saved jobs have closed. "Clear saved results" forces fresh runs.
   - **Closed jobs:** once a day (the first check after midnight IST, and at server start if it has not run that day) the server deletes jobs whose source page closed, whose last date passed, or that no provider has listed for 21 days, removes them from saved results and search history, and drops saved searches with no jobs left. Portal jobs an admin hid by hand are kept. "Remove closed jobs now" runs it at once; each run is logged under Agent runs.
   - **Agent runs:** a log of every AI import and auto-import run (who or which rule, status, found / posted / duplicates / skipped, errors, time) with daily totals.
@@ -72,6 +75,10 @@ The app runs without any API keys. In that case search uses portal jobs, the rul
 | `ADMIN_EMAILS` | Emails that become admins on first sign-in (the master admin can change roles later) |
 | `DEV_LOGIN_ENABLED` | `true` for local email-only login (ignored in production) |
 | `SERPAPI_KEY` | Google Jobs (`engine=google_jobs`, India) and Google web search of job boards, social posts and career pages |
+| `JSEARCH_API_KEY` (or `RAPIDAPI_KEY`) | JSearch job listings via RapidAPI |
+| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Adzuna India job listings |
+| `JOOBLE_API_KEY` | Jooble job listings |
+| `CAREERJET_API_KEY`, `CAREERJET_REFERER` | Careerjet India job listings (live searches only; sends the searcher's IP and browser as Careerjet requires) |
 | `GOOGLE_CSE_KEY`, `GOOGLE_CSE_CX` | Alternative web search (Google Programmable Search) |
 | `GOOGLE_MAPS_API_KEY` | Optional: company address / phone / website lookup |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Enables the AI job agent |
@@ -137,7 +144,9 @@ To turn on real ads:
 
 | Method & path | Description |
 |---------------|-------------|
-| `GET /api/auth/config` · `POST /api/auth/google` · `GET /api/auth/me` · `PUT /api/auth/profile` `{ name, phone, state, city, level, education }` | Auth · client profile |
+| `GET /api/auth/config` · `POST /api/auth/google` · `GET /api/auth/me` · `PUT /api/auth/profile` `{ name, phone, state, city, level, education }` (employers: `{ name, phone, state, city, company: { name, website?, address? } }`) · `PUT /api/auth/account-type` `{ type: user\|employer }` | Auth · client profile |
+| `GET/POST /api/employer/jobs` · `PUT/DELETE /api/employer/jobs/:id` · `POST /api/employer/jobs/:id/close` | Employer: own jobs |
+| `GET /api/admin/employer-jobs?status=` · `POST /api/admin/jobs/:id/review` `{ action: approve\|reject, note }` | Admin: employer job approval |
 | `GET /api/jobs/meta` | Categories, education levels, states, providers |
 | `POST /api/jobs/search` `{ level, prompt, category, education, state, city, postedWithin, verifiedOnly }` | Start a job search |
 | `GET /api/jobs/searches` · `GET /api/jobs/searches/:id` | Search history · status and results (after the ad) |
@@ -149,7 +158,7 @@ To turn on real ads:
 | `GET /api/master/overview` · `GET/PUT /api/master/settings` | Master admin: dashboard · daily limits and AI switches |
 | `GET /api/master/users?q=&role=&status=&profile=` · `GET /api/master/users.csv` (same filters) · `PATCH /api/master/users/:id` `{ role?, active?, dailySearchLimit? }` · `GET /api/master/users/:id/searches` | Master admin: clients |
 | `GET /api/master/agent-runs?agent=&days=` · `POST /api/master/agents/auto-import/run` | Master admin: AI agent run log · run all active rules now |
-| `GET/DELETE /api/master/saved-searches` · `POST /api/master/agents/cleanup/run` | Master admin: saved search results · remove closed jobs now |
+| `GET/DELETE /api/master/saved-searches` · `DELETE /api/master/saved-searches/:id` · `POST /api/master/agents/cleanup/run` | Master admin: saved search results · remove closed jobs now |
 | `POST /api/admin/jobs/extract` `{ text?, url? }` | AI job posting: returns reviewable drafts (each has `missing`, `duplicate`, `closed`) |
 | `GET/POST /api/admin/auto-import` · `PUT/DELETE /api/admin/auto-import/:id` · `POST /api/admin/auto-import/:id/run` | AI auto-import rules · run a rule now |
 

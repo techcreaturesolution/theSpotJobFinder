@@ -95,7 +95,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
         ],
       ),
-      body: meta == null
+      body: app.user?['role'] == 'employer'
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Employer accounts are managed on the TheSpot JobFinder website: complete your company profile and post jobs there.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : meta == null
           ? Center(
               child: FilledButton(
                 onPressed: () => app.loadMeta().then((_) => setState(() {})),

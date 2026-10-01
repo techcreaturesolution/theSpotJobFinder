@@ -16,6 +16,7 @@ const VERIFY_LABEL = {
   json_ld: 'Confirmed from the job page’s structured data',
   ai_agent: 'Confirmed by the AI agent from the job page',
   source_page: 'Confirmed on the job page',
+  employer: 'Posted by the employer and approved by our team',
 };
 
 const LEVEL_BADGE = { fresher: 'bg-green-100 text-green-800', experienced: 'bg-indigo-100 text-indigo-800' };

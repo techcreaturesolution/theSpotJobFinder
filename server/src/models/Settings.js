@@ -17,6 +17,10 @@ const settingsSchema = new mongoose.Schema(
     cache: {
       enabled: { type: Boolean, default: true },
     },
+    employer: {
+      requireApproval: { type: Boolean, default: true },
+      dailyPosts: { type: Number, min: 0, max: 1000, default: 10 },
+    },
     cleanup: {
       enabled: { type: Boolean, default: true },
     },

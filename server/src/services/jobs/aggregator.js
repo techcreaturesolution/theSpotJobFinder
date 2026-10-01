@@ -9,6 +9,7 @@ import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from
 import { enrichJob, sourceStillOpen } from './enrich.js';
 import { splitLocation } from './india.js';
 import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, platformOf } from './parse.js';
+import { API_SOURCES, searchJobApis } from './apiSources.js';
 import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
 import { verification } from './verify.js';
 
@@ -140,10 +141,12 @@ export async function searchJobs(input, log = () => {}) {
   const providers = ['portal'];
   if (available.googleJobs) providers.push('google_jobs');
   if (available.webSearch) providers.push(`web:${available.webSearch}`);
+  for (const name of Object.keys(API_SOURCES)) if (available.apis[name] && (name !== 'careerjet' || input.client)) providers.push(name);
 
-  const [google, web, db] = await Promise.allSettled([
+  const [google, web, apis, db] = await Promise.allSettled([
     withDeadline(searchGoogleJobs(plan.q, 30), deadline - 15000, []),
     withDeadline(searchWebJobs(plan, 10, log), deadline - 15000, []),
+    withDeadline(searchJobApis(plan, { postedWithin: input.postedWithin, client: input.client }, log), deadline - 15000, []),
     searchDb(plan, input.postedWithin),
   ]);
   if (google.status === 'rejected') log('warn', `Google Jobs failed: ${google.reason?.message}`);
@@ -157,7 +160,7 @@ export async function searchJobs(input, log = () => {}) {
   }
 
   const fresh = new Map();
-  const raw = [...(google.status === 'fulfilled' ? google.value : []), ...(web.status === 'fulfilled' ? web.value : [])];
+  const raw = [google, apis, web].flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
   for (const r of raw) {
     const job = normalize(r, plan);
     if (!keep(job, plan, input.postedWithin)) continue;
