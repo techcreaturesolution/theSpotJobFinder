@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { closedJobFilter } from '../src/services/jobs/cleanup.js';
-import { searchCacheKey } from '../src/services/jobs/searchCache.js';
+import { newPortalFilter, searchCacheKey } from '../src/services/jobs/searchCache.js';
 
 const base = { level: 'fresher', category: '', education: '', state: '', city: '', postedWithin: 30, verifiedOnly: true };
 
@@ -30,4 +30,12 @@ test('cleanup targets closed, expired and stale listings only', () => {
   assert.equal($or[3].origin, 'aggregated');
   assert.equal($or[3].lastSeenAt.$lt.toISOString(), '2026-09-09T00:00:00.000Z');
   assert.equal($or.length, 4);
+});
+
+test('saved results pick up portal jobs posted or approved after the save', () => {
+  const since = new Date('2026-09-30T00:00:00Z');
+  const { $and } = newPortalFilter({ role: 'accountant', userRole: 'accountant', city: 'Ahmedabad', state: 'Gujarat' }, 30, since);
+  assert.deepEqual($and[0], { active: true });
+  assert.ok($and.some((c) => c.origin === 'portal'));
+  assert.ok($and.some((c) => c.$or?.some((x) => x.createdAt?.$gt === since) && c.$or.some((x) => x['review.reviewedAt']?.$gt === since)));
 });

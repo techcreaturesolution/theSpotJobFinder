@@ -22,6 +22,13 @@ async function cacheEnabled() {
 
 const openJob = () => ({ active: true, $or: [{ validThrough: null }, { validThrough: { $gte: new Date() } }] });
 
+// Portal jobs that went live after the search was saved: newly posted, or employer jobs approved since.
+export function newPortalFilter(plan, postedWithin, since) {
+  const filter = dbFilter(plan, postedWithin);
+  filter.$and.push({ origin: 'portal' }, { $or: [{ createdAt: { $gt: since } }, { 'review.reviewedAt': { $gt: since } }] });
+  return filter;
+}
+
 export async function findCachedSearch(input) {
   if (!(await cacheEnabled())) return null;
   const key = searchCacheKey(input);
@@ -29,11 +36,7 @@ export async function findCachedSearch(input) {
   if (!doc) return null;
   const [open, newPortal] = await Promise.all([
     JobPosting.find({ _id: { $in: doc.jobs }, ...openJob() }).select('_id').lean(),
-    (() => {
-      const filter = dbFilter(doc.plan, input.postedWithin);
-      filter.$and.push({ origin: 'portal' }, { createdAt: { $gt: doc.refreshedAt } });
-      return JobPosting.find(filter).select('_id').limit(20).lean();
-    })(),
+    JobPosting.find(newPortalFilter(doc.plan, input.postedWithin, doc.refreshedAt)).select('_id').limit(20).lean(),
   ]);
   const openIds = new Set(open.map((d) => String(d._id)));
   const cached = doc.jobs.filter((id) => openIds.has(String(id)));
