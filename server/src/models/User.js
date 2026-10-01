@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { isProfileComplete } from '../services/profile.js';
 import { JOB_LEVELS } from './JobPosting.js';
 
+export const ROLES = ['user', 'employer', 'admin', 'master'];
+
 const userSchema = new mongoose.Schema(
   {
     googleId: { type: String, index: true, sparse: true },
@@ -13,8 +15,13 @@ const userSchema = new mongoose.Schema(
     city: { type: String, trim: true },
     level: { type: String, enum: [...JOB_LEVELS, null], default: null },
     education: { type: String, default: null },
+    company: {
+      name: { type: String, trim: true },
+      website: { type: String, trim: true },
+      address: { type: String, trim: true },
+    },
     profileUpdatedAt: Date,
-    role: { type: String, enum: ['user', 'admin', 'master'], default: 'user' },
+    role: { type: String, enum: ROLES, default: 'user' },
     roleManaged: { type: Boolean, default: false },
     dailySearchLimit: { type: Number, min: 0, max: 10000, default: null },
     active: { type: Boolean, default: true },
@@ -36,6 +43,7 @@ userSchema.methods.toPublic = function toPublic() {
     city: this.city || '',
     level: this.level || '',
     education: this.education || '',
+    company: { name: this.company?.name || '', website: this.company?.website || '', address: this.company?.address || '' },
     profileComplete: isProfileComplete(this),
     role: this.role,
     dailySearchLimit: this.dailySearchLimit ?? null,

@@ -27,6 +27,16 @@ export const env = {
   serpApiKey: process.env.SERPAPI_KEY || '',
   googleCseKey: process.env.GOOGLE_CSE_KEY || '',
   googleCseCx: process.env.GOOGLE_CSE_CX || '',
+  jsearch: {
+    key: process.env.JSEARCH_API_KEY || process.env.RAPIDAPI_KEY || '',
+    host: process.env.JSEARCH_API_HOST || 'jsearch.p.rapidapi.com',
+  },
+  adzuna: { appId: process.env.ADZUNA_APP_ID || '', appKey: process.env.ADZUNA_APP_KEY || '' },
+  jooble: { key: process.env.JOOBLE_API_KEY || '', url: process.env.JOOBLE_API_URL || 'https://jooble.org/api' },
+  careerjet: {
+    key: process.env.CAREERJET_API_KEY || '',
+    referer: process.env.CAREERJET_REFERER || (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',')[0].trim(),
+  },
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   overpassUrls: list(

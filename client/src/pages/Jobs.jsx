@@ -18,6 +18,10 @@ const PROVIDER_LABEL = {
   'web:serpapi': 'Web & social search (SerpAPI)',
   'web:google_cse': 'Web & social search (Google CSE)',
   'web:bing_html': 'Web search (Bing)',
+  jsearch: 'JSearch',
+  adzuna: 'Adzuna',
+  jooble: 'Jooble',
+  careerjet: 'Careerjet',
 };
 
 const EMPTY_FORM = { level: 'fresher', prompt: '', category: '', education: '', state: '', city: '', postedWithin: 30, verifiedOnly: true };
@@ -241,7 +245,7 @@ export default function Jobs() {
         {meta && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>Sources:</span>
-            {['portal', ...(meta.providers.googleJobs ? ['google_jobs'] : []), ...(meta.providers.webSearch ? [`web:${meta.providers.webSearch}`] : [])].map((p) => (
+            {['portal', ...(meta.providers.googleJobs ? ['google_jobs'] : []), ...(meta.providers.webSearch ? [`web:${meta.providers.webSearch}`] : []), ...Object.keys(meta.providers.apis || {}).filter((k) => meta.providers.apis[k])].map((p) => (
               <span key={p} className="badge bg-green-50 text-green-700">
                 {PROVIDER_LABEL[p] || p}
               </span>

@@ -1,46 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errMsg } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { getAdsenseConfig } from '../lib/adsense.js';
-
-const toDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
-
-const EMPTY_JOB = {
-  title: '',
-  companyName: '',
-  category: 'it_software',
-  level: 'fresher',
-  experienceText: '',
-  education: [],
-  educationText: '',
-  description: '',
-  city: '',
-  state: '',
-  address: '',
-  email: '',
-  phone: '',
-  companyWebsite: '',
-  applyUrl: '',
-  salary: '',
-  employmentType: 'Full-time',
-  validThrough: '',
-  sourceUrl: '',
-  importMethod: '',
-  active: true,
-};
+import JobForm from '../components/JobForm.jsx';
+import { detailsMsg, EMPTY_JOB, jobBody } from '../lib/jobForm.js';
 
 const METHOD_LABEL = {
   json_ld: 'Read from the job page’s structured data',
   ai_agent: 'Extracted by the AI agent (only facts written in the post)',
   ai_agent_empty: 'AI found no job in the text; filled with pattern matching',
   rules: 'Filled with pattern matching (set OPENAI_API_KEY for the AI agent)',
-};
-
-const jobBody = (form) => Object.fromEntries(Object.keys(EMPTY_JOB).map((k) => [k, form[k] ?? EMPTY_JOB[k]]));
-const detailsMsg = (err) => {
-  const d = err.response?.data?.details;
-  return d ? d.map((x) => `${x.path?.join('.')}: ${x.message}`).join('; ') : errMsg(err);
 };
 
 function AiImport({ onReview, onPosted }) {
@@ -350,122 +320,129 @@ function AutoImport({ meta, onPosted }) {
   );
 }
 
-function JobForm({ initial, meta, onSaved, onCancel }) {
-  const [form, setForm] = useState(initial);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
-  const toggleEdu = (k) => setForm((f) => ({ ...f, education: f.education.includes(k) ? f.education.filter((x) => x !== k) : [...f.education, k] }));
+const REVIEW_BADGE = { pending: 'bg-amber-100 text-amber-800', approved: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700' };
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    const body = jobBody(form);
+function EmployerJobs({ onChanged }) {
+  const [status, setStatus] = useState('pending');
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(null);
+  const [error, setError] = useState('');
+  const load = useCallback(() => {
+    api
+      .get('/admin/employer-jobs', { params: { status } })
+      .then((r) => setItems(r.data.items))
+      .catch((e) => setError(errMsg(e)));
+  }, [status]);
+  useEffect(load, [load]);
+
+  const review = async (job, action) => {
+    const note = action === 'reject' ? window.prompt('Why is this job rejected? The employer will see this note.') : '';
+    if (note === null) return;
     try {
-      if (initial._id) await api.put(`/admin/jobs/${initial._id}`, body);
-      else await api.post('/admin/jobs', body);
-      onSaved();
-    } catch (err) {
-      setError(detailsMsg(err));
-    } finally {
-      setBusy(false);
+      await api.post(`/admin/jobs/${job._id}/review`, { action, note: note || '' });
+      setError('');
+      load();
+      onChanged();
+    } catch (e) {
+      setError(detailsMsg(e));
     }
   };
 
-  const field = (k, label, props = {}) => (
-    <label className="text-sm">
-      {label}
-      <input className="input mt-1" value={form[k] || ''} onChange={set(k)} {...props} />
-    </label>
-  );
-
   return (
-    <form onSubmit={submit} className="card grid gap-3 md:grid-cols-3">
-      <h3 className="font-semibold md:col-span-3">{initial._id ? 'Edit job' : initial.importMethod ? 'Review AI-extracted job' : 'Post a job'}</h3>
-      {initial.importMethod && !initial._id && (
-        <p className="text-sm text-slate-500 md:col-span-3">
-          Every value below was copied from the advert. Empty fields were not written in it; fill them only with facts you have confirmed.
-          {initial.duplicate && <span className="ml-1 font-medium text-amber-700">This job (same title, company and city) is already posted.</span>}
-        </p>
-      )}
-      {field('title', 'Job title', { required: true })}
-      {field('companyName', 'Company name', { required: true })}
-      <label className="text-sm">
-        Category
-        <select className="input mt-1" value={form.category} onChange={set('category')}>
-          {meta?.categories.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Review status">
+          <option value="pending">Waiting for review</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="">All employer jobs</option>
         </select>
-      </label>
-      <label className="text-sm">
-        Fresher / experienced
-        <select className="input mt-1" value={form.level || ''} onChange={set('level')}>
-          <option value="fresher">Fresher</option>
-          <option value="experienced">Experienced</option>
-          <option value="">Both</option>
-        </select>
-      </label>
-      {field('experienceText', 'Experience (e.g. 0-1 years)')}
-      {field('salary', 'Salary (e.g. ₹15,000 - ₹25,000 / month)')}
-      <div className="text-sm md:col-span-3">
-        Education qualification
-        <div className="mt-1 flex flex-wrap gap-1">
-          {meta?.education.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => toggleEdu(c.key)}
-              className={`badge ${form.education.includes(c.key) ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
+        <span className="text-xs text-slate-500">Check each job against the employer’s company before approving. Only approved jobs appear in searches.</span>
       </div>
-      <label className="text-sm md:col-span-3">
-        Job description &amp; requirements
-        <textarea className="input mt-1" rows={5} value={form.description} onChange={set('description')} />
-      </label>
-      <label className="text-sm">
-        State
-        <select className="input mt-1" value={form.state} onChange={set('state')}>
-          <option value="">—</option>
-          {meta?.states.map((st) => (
-            <option key={st}>{st}</option>
-          ))}
-        </select>
-      </label>
-      {field('city', 'City')}
-      {field('employmentType', 'Job type')}
-      <label className="text-sm md:col-span-3">
-        Address
-        <input className="input mt-1" value={form.address} onChange={set('address')} />
-      </label>
-      {field('email', 'HR email', { type: 'email' })}
-      {field('phone', 'Contact number')}
-      {field('companyWebsite', 'Company website', { type: 'url', placeholder: 'https://' })}
-      {field('applyUrl', 'Apply link', { type: 'url', placeholder: 'https://' })}
-      <label className="text-sm">
-        Last date to apply
-        <input className="input mt-1" type="date" value={toDate(form.validThrough)} onChange={set('validThrough')} />
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={form.active} onChange={set('active')} /> Active
-      </label>
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 md:col-span-3">{error}</div>}
-      <div className="flex justify-end gap-2 md:col-span-3">
-        <button type="button" className="btn-secondary" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn-primary" disabled={busy}>
-          {busy ? 'Saving…' : 'Save job'}
-        </button>
+      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      <div className="card overflow-x-auto p-0">
+        <table className="min-w-full divide-y divide-slate-200">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="th">Job</th>
+              <th className="th">Employer</th>
+              <th className="th">Location</th>
+              <th className="th">How to apply</th>
+              <th className="th">Status</th>
+              <th className="th" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {items.map((j) => [
+              <tr key={j._id}>
+                <td className="td">
+                  <button type="button" className="text-left font-medium text-blue-700" onClick={() => setOpen(open === j._id ? null : j._id)}>
+                    {j.title}
+                  </button>
+                  <div className="text-xs text-slate-500">
+                    {j.companyName} · {j.level || 'fresher & experienced'} · submitted {new Date(j.updatedAt).toLocaleString()}
+                  </div>
+                </td>
+                <td className="td text-xs">
+                  <div>{j.postedBy?.name}</div>
+                  <div className="text-slate-500">{j.postedBy?.email}</div>
+                  {j.postedBy?.phone && <div className="text-slate-500">+91 {j.postedBy.phone}</div>}
+                  {j.postedBy?.company?.website && (
+                    <a className="text-blue-700" href={j.postedBy.company.website} target="_blank" rel="noreferrer">
+                      {j.postedBy.company.website}
+                    </a>
+                  )}
+                </td>
+                <td className="td text-xs">{[j.city, j.state].filter(Boolean).join(', ')}</td>
+                <td className="td text-xs">
+                  {j.applyUrl && (
+                    <a className="block text-blue-700" href={j.applyUrl} target="_blank" rel="noreferrer">
+                      Apply link
+                    </a>
+                  )}
+                  {j.emails?.[0] && <div>{j.emails[0]}</div>}
+                  {j.phones?.[0] && <div>{j.phones[0]}</div>}
+                </td>
+                <td className="td text-xs">
+                  <span className={`badge ${REVIEW_BADGE[j.review?.status] || 'bg-slate-100 text-slate-500'}`}>{j.review?.status}</span>
+                  {!j.active && j.review?.status === 'approved' && <div className="text-slate-400">closed by employer</div>}
+                  {j.review?.note && <div className="text-slate-500">{j.review.note}</div>}
+                </td>
+                <td className="td whitespace-nowrap text-right text-xs">
+                  {j.review?.status !== 'approved' && (
+                    <button type="button" className="mr-3 text-green-700" onClick={() => review(j, 'approve')}>
+                      Approve
+                    </button>
+                  )}
+                  {j.review?.status !== 'rejected' && (
+                    <button type="button" className="text-red-600" onClick={() => review(j, 'reject')}>
+                      Reject
+                    </button>
+                  )}
+                </td>
+              </tr>,
+              open === j._id && (
+                <tr key={`${j._id}-d`}>
+                  <td className="td bg-slate-50 text-sm whitespace-pre-line" colSpan={6}>
+                    {j.description}
+                    <div className="mt-2 text-xs text-slate-500">
+                      {[j.experienceText, j.salary, j.employmentType, j.validThrough && `Apply by ${new Date(j.validThrough).toLocaleDateString()}`, j.address].filter(Boolean).join(' · ')}
+                    </div>
+                  </td>
+                </tr>
+              ),
+            ])}
+            {!items.length && (
+              <tr>
+                <td className="td py-8 text-center text-slate-500" colSpan={6}>
+                  No employer jobs here.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -557,14 +534,14 @@ export default function Admin() {
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       <AdsenseStatus />
       <div className="flex gap-2 border-b border-slate-200">
-        {['jobs', 'auto', 'users'].map((t) => (
+        {['jobs', 'employer', 'auto', 'users'].map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
             className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium capitalize ${tab === t ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500'}`}
           >
-            {{ jobs: 'Jobs', auto: 'AI auto-import', users: 'Users' }[t]}
+            {{ jobs: 'Jobs', employer: `Employer jobs${stats?.pendingEmployerJobs ? ` (${stats.pendingEmployerJobs})` : ''}`, auto: 'AI auto-import', users: 'Users' }[t]}
           </button>
         ))}
       </div>
@@ -611,6 +588,7 @@ export default function Admin() {
                       <div className="text-xs text-slate-500">
                         {j.companyName}
                         {j.importMethod && <span className="badge ml-1 bg-blue-50 text-blue-700">{j.importMethod === 'ai_auto' ? 'AI auto-import' : 'AI import'}</span>}
+                        {j.review?.status && <span className={`badge ml-1 ${REVIEW_BADGE[j.review.status]}`}>employer · {j.review.status}</span>}
                       </div>
                     </td>
                     <td className="td text-xs">{[j.city, j.state].filter(Boolean).join(', ') || '—'}</td>
@@ -646,6 +624,7 @@ export default function Admin() {
         </div>
       )}
 
+      {tab === 'employer' && <EmployerJobs onChanged={load} />}
       {tab === 'auto' && <AutoImport meta={jobMeta} onPosted={load} />}
 
       {tab === 'users' && (

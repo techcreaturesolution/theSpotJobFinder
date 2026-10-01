@@ -23,8 +23,13 @@ export default function Layout() {
           <NavLink to="/" end className={linkCls}>
             New Jobs
           </NavLink>
+          {user?.role === 'employer' && (
+            <NavLink to="/employer" className={linkCls}>
+              Employer · My job posts
+            </NavLink>
+          )}
           <NavLink to="/profile" className={linkCls}>
-            My profile
+            {user?.role === 'employer' ? 'Company profile' : 'My profile'}
           </NavLink>
           {['admin', 'master'].includes(user?.role) && (
             <NavLink to="/admin" className={linkCls}>
@@ -64,6 +69,7 @@ export default function Layout() {
             <NavLink to="/" end>
               New Jobs
             </NavLink>
+            {user?.role === 'employer' && <NavLink to="/employer">My jobs</NavLink>}
             <NavLink to="/profile">Profile</NavLink>
             {['admin', 'master'].includes(user?.role) && <NavLink to="/admin">Admin</NavLink>}
             {user?.role === 'master' && <NavLink to="/master">Master</NavLink>}

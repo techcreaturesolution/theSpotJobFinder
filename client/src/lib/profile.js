@@ -1,1 +1,1 @@
-export const needsProfile = (user) => user?.role === 'user' && !user.profileComplete;
+export const needsProfile = (user) => ['user', 'employer'].includes(user?.role) && !user.profileComplete;

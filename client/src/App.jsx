@@ -3,12 +3,13 @@ import Layout from './components/Layout.jsx';
 import { useAuth } from './lib/auth.jsx';
 import { needsProfile } from './lib/profile.js';
 import Admin from './pages/Admin.jsx';
+import Employer from './pages/Employer.jsx';
 import Jobs from './pages/Jobs.jsx';
 import Login from './pages/Login.jsx';
 import Master from './pages/Master.jsx';
 import Profile from './pages/Profile.jsx';
 
-function Protected({ children, admin = false, master = false }) {
+function Protected({ children, admin = false, master = false, employer = false }) {
   const { user, loading } = useAuth();
   const { pathname } = useLocation();
   if (loading) return <div className="p-10 text-center text-slate-500">Loading…</div>;
@@ -16,6 +17,7 @@ function Protected({ children, admin = false, master = false }) {
   if (needsProfile(user) && pathname !== '/profile') return <Navigate to="/profile" replace />;
   if (admin && !['admin', 'master'].includes(user.role)) return <Navigate to="/" replace />;
   if (master && user.role !== 'master') return <Navigate to="/" replace />;
+  if (employer && user.role !== 'employer') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -33,6 +35,14 @@ export default function App() {
         <Route index element={<Jobs />} />
         <Route path="jobs" element={<Navigate to="/" replace />} />
         <Route path="profile" element={<Profile />} />
+        <Route
+          path="employer"
+          element={
+            <Protected employer>
+              <Employer />
+            </Protected>
+          }
+        />
         <Route
           path="admin"
           element={

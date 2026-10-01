@@ -4,7 +4,8 @@ import 'api.dart';
 import 'models.dart';
 
 bool userNeedsProfile(Map<String, dynamic>? user) =>
-    user?['role'] == 'user' && user?['profileComplete'] != true;
+    (user?['role'] == 'user' || user?['role'] == 'employer') &&
+    user?['profileComplete'] != true;
 
 class AppState extends ChangeNotifier {
   AppState(this.api) {

@@ -2,11 +2,13 @@ import { env } from '../../config/env.js';
 import { http, isCompanyWebsite } from '../../utils/http.js';
 import { mapsProvider, searchGoogleMaps } from '../sources/googleMaps.js';
 import { webSearch, webSearchProvider } from '../sources/webSearch.js';
+import { apiSourcesConfigured } from './apiSources.js';
 import { isListingPage, parseResultTitle, platformOf } from './parse.js';
 
 export function jobProviders() {
   return {
     googleJobs: Boolean(env.serpApiKey),
+    apis: apiSourcesConfigured(),
     webSearch: webSearchProvider(),
     maps: mapsProvider() === 'openstreetmap' ? null : mapsProvider(),
   };
