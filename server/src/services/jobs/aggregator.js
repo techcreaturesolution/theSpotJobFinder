@@ -5,12 +5,12 @@ import { sleep } from '../../utils/http.js';
 import { llmEnabled, llmJson } from '../agent/llm.js';
 import { categoryByKey, detectCategory } from './categories.js';
 import { detectEducation, educationByKey, educationMatches, qualifyingKeys } from './education.js';
-import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
+import { canonicalUrl, dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
 import { enrichJob, sourceStillOpen } from './enrich.js';
 import { splitLocation } from './india.js';
 import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, platformOf } from './parse.js';
 import { API_SOURCES, searchJobApis } from './apiSources.js';
-import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
+import { googleJobsQueries, jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
 import { verification } from './verify.js';
 
 const DAY = 86400_000;
@@ -91,6 +91,32 @@ function keep(job, plan, postedWithin) {
   return Boolean(job.title);
 }
 
+const FILLABLE = ['companyName', 'description', 'salary', 'employmentType', 'validThrough', 'postedAt', 'logo', 'location', 'state'];
+const linkKeys = (job) => [job.applyUrl, job.sourceUrl, ...(job.applyOptions || []).map((o) => o.link)].map(canonicalUrl).filter(Boolean);
+
+// Merges results from every source into one entry per job: same identity key, or any shared apply/source link.
+export function mergeSourceJobs(raw, plan, postedWithin) {
+  const fresh = new Map();
+  const byLink = new Map();
+  for (const r of raw) {
+    const job = normalize(r, plan);
+    if (!keep(job, plan, postedWithin)) continue;
+    const links = linkKeys(job);
+    const ownerKey = fresh.has(job.key) ? job.key : links.map((l) => byLink.get(l)).find(Boolean);
+    const prev = ownerKey && fresh.get(ownerKey);
+    if (prev) {
+      prev.applyOptions = uniqueLinks([...prev.applyOptions, ...job.applyOptions, ...(job.applyUrl ? [{ title: job.via || job.platform || 'Apply', link: job.applyUrl }] : [])]);
+      prev.emails = uniqueEmails([...prev.emails, ...job.emails]);
+      prev.phones = uniquePhones([...prev.phones, ...job.phones]);
+      for (const f of FILLABLE) if (!prev[f] && job[f]) prev[f] = job[f];
+    } else {
+      fresh.set(job.key, { ...job, applyOptions: job.applyOptions || [] });
+    }
+    for (const l of links) if (!byLink.has(l)) byLink.set(l, ownerKey || job.key);
+  }
+  return fresh;
+}
+
 export function dbFilter(plan, postedWithin) {
   const and = [
     { active: true },
@@ -144,7 +170,7 @@ export async function searchJobs(input, log = () => {}) {
   for (const name of Object.keys(API_SOURCES)) if (available.apis[name] && (name !== 'careerjet' || input.client)) providers.push(name);
 
   const [google, web, apis, db] = await Promise.allSettled([
-    withDeadline(searchGoogleJobs(plan.q, 30), deadline - 15000, []),
+    withDeadline(searchGoogleJobs(googleJobsQueries(plan), 30, log), deadline - 15000, []),
     withDeadline(searchWebJobs(plan, 10, log), deadline - 15000, []),
     withDeadline(searchJobApis(plan, { postedWithin: input.postedWithin, client: input.client }, log), deadline - 15000, []),
     searchDb(plan, input.postedWithin),
@@ -159,20 +185,8 @@ export async function searchJobs(input, log = () => {}) {
     else recheck.set(doc.key, doc);
   }
 
-  const fresh = new Map();
   const raw = [google, apis, web].flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-  for (const r of raw) {
-    const job = normalize(r, plan);
-    if (!keep(job, plan, input.postedWithin)) continue;
-    const prev = fresh.get(job.key);
-    if (prev) {
-      prev.applyOptions = uniqueLinks([...prev.applyOptions, ...(job.applyOptions || [])]);
-      prev.emails = uniqueEmails([...prev.emails, ...job.emails]);
-      prev.phones = uniquePhones([...prev.phones, ...job.phones]);
-      continue;
-    }
-    fresh.set(job.key, { ...job, applyOptions: job.applyOptions || [] });
-  }
+  const fresh = mergeSourceJobs(raw, plan, input.postedWithin);
 
   const existing = fresh.size ? await JobPosting.find({ key: { $in: [...fresh.keys()] } }).lean() : [];
   const existingByKey = new Map(existing.map((d) => [d.key, d]));

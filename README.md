@@ -125,7 +125,7 @@ To turn on real ads:
    The Flutter app shows an AdMob rewarded ad instead when `ADMOB_*_REWARDED_ID` is set. AdMob calls `GET /api/admob/ssv` (server-side verification, signature checked against Google's keys, one use per transaction) and that unlocks the search. AdMob rewarded ads are usually 15–30 s.
 3. Meanwhile the **job agent**:
    - builds the query from the prompt, category, education and location;
-   - searches the portal's own jobs, Google Jobs and `site:` web searches of the job boards, social sites and career pages;
+   - searches the portal's own jobs, Google Jobs, the job listing APIs and `site:` web searches of the job boards, social sites and career pages, all at the same time. SerpAPI runs several requests in parallel: three Google Jobs query variants (the main one fetches up to 3 pages) and five web searches (three job-board groups, social posts, company career pages). That is up to 10 SerpAPI searches per new search; repeated searches reuse saved results;
    - normalises each result: experience level, education (10th, 12th, ITI, Diploma, graduate, B.E./B.Tech, B.Com, MBA, …), city/state and posted date;
    - removes duplicates (same title + company + city, or the same posting URL) and merges their apply links, emails and phones without repeats.
 4. **Verification.** A job counts as verified if it is one of these:
