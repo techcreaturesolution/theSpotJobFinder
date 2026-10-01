@@ -14,8 +14,26 @@ export function jobProviders() {
   };
 }
 
-export async function searchGoogleJobs(q, num = 20) {
+export function googleJobsQueries({ q, role, levelWord, place }) {
+  const r = role || 'jobs';
+  return [...new Set([
+    q,
+    `${r} jobs in ${place}`,
+    levelWord ? `${r} ${levelWord} hiring ${place}` : `${r} vacancy ${place}`,
+  ].map((x) => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
+}
+
+export async function searchGoogleJobs(queries, num = 30, log = () => {}) {
   if (!env.serpApiKey) return [];
+  const list = [].concat(queries).filter(Boolean);
+  const settled = await Promise.allSettled(list.map((q, i) => googleJobsPages(q, i === 0 ? num : 10)));
+  const failed = settled.filter((r) => r.status === 'rejected');
+  failed.forEach((r) => log('warn', `Google Jobs query failed: ${r.reason?.response?.status || ''} ${r.reason?.message}`.trim()));
+  if (list.length && failed.length === list.length) throw failed[0].reason;
+  return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+}
+
+async function googleJobsPages(q, num) {
   const out = [];
   let token;
   for (let page = 0; page < Math.ceil(Math.min(num, 30) / 10); page += 1) {
@@ -51,14 +69,18 @@ export async function searchGoogleJobs(q, num = 20) {
   return out;
 }
 
-const JOB_BOARDS = ['apna.co', 'workindia.in', 'naukri.com', 'in.indeed.com', 'linkedin.com/jobs/view', 'foundit.in', 'shine.com', 'internshala.com'];
+const JOB_BOARD_GROUPS = [
+  ['apna.co', 'workindia.in', 'internshala.com'],
+  ['naukri.com', 'in.indeed.com'],
+  ['linkedin.com/jobs/view', 'foundit.in', 'shine.com'],
+];
 const SOCIAL = ['x.com', 'twitter.com', 'linkedin.com/posts', 'facebook.com', 'instagram.com'];
 
 export function webJobQueries({ role, levelWord, place }) {
   const r = role ? `"${role}"` : '';
   const sites = (list) => `(${list.map((s) => `site:${s}`).join(' OR ')})`;
   return [
-    { q: `${sites(JOB_BOARDS)} ${r} ${levelWord} job ${place}`.replace(/\s+/g, ' ').trim(), kind: 'board' },
+    ...JOB_BOARD_GROUPS.map((group) => ({ q: `${sites(group)} ${r} ${levelWord} job ${place}`.replace(/\s+/g, ' ').trim(), kind: 'board' })),
     { q: `${sites(SOCIAL)} "hiring" ${r} ${levelWord} ${place} apply`.replace(/\s+/g, ' ').trim(), kind: 'social' },
     { q: `${r || 'jobs'} ${levelWord} careers "apply now" ${place} -site:naukri.com -site:indeed.com -site:linkedin.com`.replace(/\s+/g, ' ').trim(), kind: 'company' },
   ];

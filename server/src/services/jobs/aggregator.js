@@ -10,7 +10,7 @@ import { enrichJob, sourceStillOpen } from './enrich.js';
 import { splitLocation } from './india.js';
 import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, platformOf } from './parse.js';
 import { API_SOURCES, searchJobApis } from './apiSources.js';
-import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
+import { googleJobsQueries, jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
 import { verification } from './verify.js';
 
 const DAY = 86400_000;
@@ -144,7 +144,7 @@ export async function searchJobs(input, log = () => {}) {
   for (const name of Object.keys(API_SOURCES)) if (available.apis[name] && (name !== 'careerjet' || input.client)) providers.push(name);
 
   const [google, web, apis, db] = await Promise.allSettled([
-    withDeadline(searchGoogleJobs(plan.q, 30), deadline - 15000, []),
+    withDeadline(searchGoogleJobs(googleJobsQueries(plan), 30, log), deadline - 15000, []),
     withDeadline(searchWebJobs(plan, 10, log), deadline - 15000, []),
     withDeadline(searchJobApis(plan, { postedWithin: input.postedWithin, client: input.client }, log), deadline - 15000, []),
     searchDb(plan, input.postedWithin),
