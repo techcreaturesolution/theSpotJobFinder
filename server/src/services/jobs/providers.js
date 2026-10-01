@@ -28,7 +28,7 @@ export async function searchGoogleJobs(queries, num = 30, log = () => {}) {
   const list = [].concat(queries).filter(Boolean);
   const settled = await Promise.allSettled(list.map((q, i) => googleJobsPages(q, i === 0 ? num : 10)));
   const failed = settled.filter((r) => r.status === 'rejected');
-  failed.forEach((r) => log('warn', `Google Jobs query failed: ${r.reason?.response?.status || ''} ${r.reason?.message}`.trim()));
+  failed.forEach((r) => log('warn', `Google Jobs query failed: ${[r.reason?.response?.status, r.reason?.message].filter(Boolean).join(' ')}`));
   if (list.length && failed.length === list.length) throw failed[0].reason;
   return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
 }
