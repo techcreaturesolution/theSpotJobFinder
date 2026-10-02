@@ -23,7 +23,7 @@ export function googleJobsQueries({ q, role, levelWord, place }) {
   ].map((x) => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
 }
 
-export async function searchGoogleJobs(queries, num = 30, log = () => {}) {
+export async function searchGoogleJobs(queries, num = 30, log = () => { }) {
   if (!env.serpApiKey) return [];
   const list = [].concat(queries).filter(Boolean);
   const settled = await Promise.allSettled(list.map((q, i) => googleJobsPages(q, i === 0 ? num : 10)));
@@ -86,7 +86,7 @@ export function webJobQueries({ role, levelWord, place }) {
   ];
 }
 
-export async function searchWebJobs(params, perQuery = 10, log = () => {}) {
+export async function searchWebJobs(params, perQuery = 10, log = () => { }) {
   if (!webSearchProvider()) return [];
   const queries = webJobQueries(params);
   const settled = await Promise.allSettled(queries.map((x) => webSearch(x.q, perQuery)));
@@ -122,7 +122,7 @@ export async function searchWebJobs(params, perQuery = 10, log = () => {}) {
 
 export async function lookupCompany(name, place) {
   if (!name || mapsProvider() === 'openstreetmap') return null;
-  const rows = await searchGoogleMaps({ businessType: name, location: place }, 1, () => {});
+  const rows = await searchGoogleMaps({ businessType: name, location: place }, 1, () => { });
   const first = rows[0];
   if (!first) return null;
   const n = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');

@@ -19,6 +19,6 @@ if (missing.length) {
 }
 await SearchCache.syncIndexes();
 await getSettings({ fresh: true });
-createApp().listen(env.port, () => console.log(`[api] listening on http://localhost:${env.port}`));
+createApp().listen(env.port, '0.0.0.0', () => console.log(`[api] listening on http://0.0.0.0:${env.port}`));
 startAutoImport();
 startCleanup();

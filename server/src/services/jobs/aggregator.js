@@ -159,7 +159,7 @@ function rank(job, plan) {
   return t / DAY + contact * 2 + verified + edu + (job.origin === 'portal' ? 3 : 0);
 }
 
-export async function searchJobs(input, log = () => {}) {
+export async function searchJobs(input, log = () => { }) {
   const started = Date.now();
   const deadline = started + env.jobSearchBudgetMs;
   const plan = await planJobQuery(input);
