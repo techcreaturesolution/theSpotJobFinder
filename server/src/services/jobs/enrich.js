@@ -3,7 +3,7 @@ import { http, isCompanyWebsite, normalizeUrl, domainOf } from '../../utils/http
 import { crawlWebsite } from '../crawler.js';
 import { categorizeEmail, extractEmails } from '../emails.js';
 import { detectEducation } from './education.js';
-import { detectExperience, extractContacts, extractJsonLdJobs, extractPhones, isJobBoardUrl, parsePostedAt, parseResultTitle } from './parse.js';
+import { detectExperience, domainMatchesCompany, extractContacts, extractJsonLdJobs, extractPhones, isJobBoardUrl, parsePostedAt, parseResultTitle } from './parse.js';
 import { lookupCompany } from './providers.js';
 import { uniqueEmails, uniquePhones } from './dedupe.js';
 import { agentExtract, CLOSED_RE, titleMatches, verification } from './verify.js';
@@ -32,12 +32,21 @@ const rankEmails = (emails) =>
   [...new Set(emails.map((e) => e.toLowerCase()))].sort((a, b) => Number(categorizeEmail(b) === 'hr') - Number(categorizeEmail(a) === 'hr'));
 
 export function companySiteFrom(job) {
-  for (const u of [job.companyWebsite, job.applyUrl, job.sourceUrl]) {
-    if (u && isCompanyWebsite(u) && !isJobBoardUrl(u)) {
-      try {
-        return new URL(normalizeUrl(u)).origin;
-      } catch {
-        /* ignore */
+  if (job.companyWebsite && isCompanyWebsite(job.companyWebsite) && !isJobBoardUrl(job.companyWebsite, job.companyName)) {
+    try {
+      return new URL(normalizeUrl(job.companyWebsite)).origin;
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const u of [job.applyUrl, job.sourceUrl]) {
+    if (u && isCompanyWebsite(u) && !isJobBoardUrl(u, job.companyName)) {
+      if (domainMatchesCompany(u, job.companyName)) {
+        try {
+          return new URL(normalizeUrl(u)).origin;
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -114,21 +123,33 @@ export async function enrichJob(job, place) {
     }
   }
 
-  out.companyWebsite = companySiteFrom(out) || out.companyWebsite || '';
   if (!out.companyName) {
     out.companyName = parseResultTitle(out.title).companyName || '';
   }
 
-  if ((!out.address || !out.phones.length || !out.companyWebsite) && out.companyName) {
+  if (out.companyName) {
     try {
       const hit = await lookupCompany(out.companyName, out.city || place);
       if (hit) {
         out.address ||= hit.address || '';
         if (hit.phone) out.phones.push(hit.phone);
-        if (!out.companyWebsite && hit.website && isCompanyWebsite(hit.website)) out.companyWebsite = normalizeUrl(hit.website);
+        if (hit.website && isCompanyWebsite(hit.website)) {
+          out.companyWebsite = normalizeUrl(hit.website);
+        }
       }
     } catch {
       /* maps lookup failed */
+    }
+  }
+
+  if (!out.companyWebsite) {
+    out.companyWebsite = companySiteFrom(out) || '';
+  }
+
+  if (out.companyWebsite) {
+    const compHost = domainOf(out.companyWebsite);
+    if (compHost && !(out.applyOptions || []).some((o) => (o.link || '').includes(compHost))) {
+      out.applyOptions = [{ title: 'Company Website', link: out.companyWebsite }, ...(out.applyOptions || [])];
     }
   }
 

@@ -120,7 +120,7 @@ router.post('/:id/apply', async (req, res) => {
   const job = await JobPosting.findOneAndUpdate({ _id: req.params.id, active: true }, { $inc: { applyClicks: 1 } }, { returnDocument: 'after' });
   if (!job) throw new HttpError(404, 'Job not found');
   const link = z.object({ link: z.string().url().optional() }).parse(req.body || {}).link;
-  const allowed = [job.applyUrl, ...job.applyOptions.map((o) => o.link), job.sourceUrl].filter(Boolean);
+  const allowed = [job.companyWebsite, job.applyUrl, ...job.applyOptions.map((o) => o.link), job.sourceUrl].filter(Boolean);
   const url = (link && allowed.includes(link) ? link : allowed[0]) || (job.emails[0] ? `mailto:${job.emails[0]}?subject=${encodeURIComponent(`Application for ${job.title}`)}` : null);
   if (!url) throw new HttpError(404, 'This job has no apply link or email');
   res.json({ url });

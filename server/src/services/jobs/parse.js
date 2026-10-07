@@ -59,24 +59,47 @@ export const ATS_DOMAINS = [
 
 const matchesDomain = (d, list) => list.some((s) => d === s || d.endsWith(`.${s}`));
 
-export function platformOf(urlOrVia) {
+export function domainMatchesCompany(url, companyName) {
+  if (!url || !companyName) return false;
+  try {
+    const host = domainOf(url) || '';
+    if (!host) return false;
+    const cleanComp = String(companyName || '')
+      .toLowerCase()
+      .replace(/\b(?:pvt|ltd|limited|private|llp|inc|corp|technologies|technology|solutions|services|group|infotech|tech|enterprises|systems|consultancy|consultants|consulting)\b/g, '')
+      .replace(/[^a-z0-9]/g, ' ')
+      .trim();
+    const words = cleanComp.split(/\s+/).filter((w) => w.length >= 3);
+    if (!words.length) return false;
+    return words.some((w) => host.includes(w));
+  } catch {
+    return false;
+  }
+}
+
+export function platformOf(urlOrVia, companyName) {
   if (!urlOrVia) return null;
   const s = String(urlOrVia).trim();
   const d = /^https?:\/\//i.test(s) ? domainOf(s) : null;
   if (d) {
     const hit = PLATFORMS.find(([dom]) => d === dom || d.endsWith(`.${dom}`));
     if (hit) return hit[1];
-    return matchesDomain(d, ATS_DOMAINS) ? 'Company careers page' : 'Company website';
+    if (matchesDomain(d, ATS_DOMAINS)) return 'Company careers page';
+    if (companyName && domainMatchesCompany(s, companyName)) return 'Company website';
+    return d.replace(/\.(com|co\.in|org|in|net|io|ai)$/i, '').replace(/[-_.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
   const via = s.replace(/^via\s+/i, '');
   const hit = PLATFORMS.find(([dom, label]) => via.toLowerCase().includes(label.toLowerCase().split(' ')[0]) || via.toLowerCase().includes(dom));
   return hit ? hit[1] : via;
 }
 
-export function isJobBoardUrl(url) {
+export function isJobBoardUrl(url, companyName) {
   const d = domainOf(url);
   if (!d) return false;
-  return PLATFORMS.some(([dom]) => d === dom || d.endsWith(`.${dom}`)) || matchesDomain(d, ATS_DOMAINS);
+  if (PLATFORMS.some(([dom]) => d === dom || d.endsWith(`.${dom}`)) || matchesDomain(d, ATS_DOMAINS)) return true;
+  // If company name is provided and domain does NOT match company, treat as external job portal
+  if (companyName && !domainMatchesCompany(url, companyName)) return true;
+  return false;
 }
 
 const FRESHER_RE =

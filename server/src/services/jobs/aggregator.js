@@ -8,7 +8,7 @@ import { detectEducation, educationByKey, educationMatches, qualifyingKeys } fro
 import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
 import { enrichJob, sourceStillOpen } from './enrich.js';
 import { splitLocation } from './india.js';
-import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, parseResultTitle, platformOf } from './parse.js';
+import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, parseResultTitle, platformOf, stripHtml } from './parse.js';
 import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
 import { searchApifyLinkedIn } from './apifyLinkedIn.js';
 import { verification } from './verify.js';
@@ -61,25 +61,27 @@ export async function planJobQuery({ prompt = '', level, category, education = '
 
 function normalize(raw, plan) {
   const highlightText = (raw.highlights || []).flatMap((h) => h.items || []).join('\n');
-  const exp = detectExperience(raw.title, highlightText, raw.description);
+  const cleanDesc = stripHtml(raw.description || '');
+  const exp = detectExperience(raw.title, highlightText, cleanDesc);
   const loc = splitLocation(raw.location || raw.address);
   const city = loc.city || (plan.city && String(raw.location || '').toLowerCase().includes(plan.city.toLowerCase()) ? plan.city : '');
-  const contacts = extractContacts(raw.description, highlightText);
+  const contacts = extractContacts(cleanDesc, highlightText);
   const parsedTitle = parseResultTitle(raw.title);
   const companyName = raw.companyName || parsedTitle.companyName || '';
   return {
     ...raw,
+    description: cleanDesc,
     companyName,
     key: jobKey(raw),
     level: raw.level ?? exp.level,
     experienceText: raw.experienceText || exp.text,
-    education: raw.education?.length ? raw.education : detectEducation(raw.title, highlightText, raw.description),
+    education: raw.education?.length ? raw.education : detectEducation(raw.title, highlightText, cleanDesc),
     verification: raw.verification || (raw.provider === 'google_jobs' ? verification('verified', 'google_jobs') : verification('unverified', 'search_result')),
-    category: plan.category || detectCategory(`${raw.title} ${String(raw.description || '').slice(0, 300)}`) || '',
+    category: plan.category || detectCategory(`${raw.title} ${cleanDesc.slice(0, 300)}`) || '',
     postedAt: raw.postedAt || parsePostedAt(raw.postedText),
     city,
     state: loc.state || (city && city === plan.city ? plan.state : ''),
-    platform: raw.platform || platformOf(raw.applyUrl),
+    platform: raw.platform || platformOf(raw.applyUrl, companyName),
     applyOptions: uniqueLinks(raw.applyOptions),
     emails: uniqueEmails([...(raw.emails || []), ...contacts.emails]),
     phones: uniquePhones([...(raw.phones || []), ...contacts.phones]),
@@ -103,6 +105,7 @@ const GENERIC_DESIGNATION_WORDS = new Set([
 ]);
 
 const TECH_DOMAINS = [
+  'backend', 'back-end', 'frontend', 'front-end', 'full stack', 'fullstack',
   'java', 'react', 'python', 'php', 'flutter', 'angular', 'vue', 'node', 'nodejs',
   'android', 'ios', 'swift', 'kotlin', 'c++', 'c#', '.net', 'dotnet', 'golang',
   'ruby', 'rails', 'mern', 'mean', 'nextjs', 'next.js', 'django', 'laravel',
@@ -111,12 +114,34 @@ const TECH_DOMAINS = [
   'data entry', 'content writer',
 ];
 
+const CONFLICTING_TRACKS = [
+  {
+    target: /\b(?:backend|back-end)\b/i,
+    conflicts: [/\b(?:frontend|front-end|ui[\s/-]?ux|graphic|react[\s/-]?js developer|angular developer|vue developer)\b/i],
+    allowIfTitleAlsoHas: /\b(?:full[\s-]?stack|mern|mean|backend|back-end)\b/i,
+  },
+  {
+    target: /\b(?:frontend|front-end)\b/i,
+    conflicts: [/\b(?:backend|back-end|database admin|devops|system admin)\b/i],
+    allowIfTitleAlsoHas: /\b(?:full[\s-]?stack|mern|mean|frontend|front-end)\b/i,
+  },
+];
+
 export function roleMatches(job, userRole) {
   if (!userRole || !userRole.trim()) return true;
 
   const target = userRole.toLowerCase().trim();
   const title = String(job.title || '').toLowerCase().trim();
   const desc = String(job.description || '').slice(0, 1500).toLowerCase();
+
+  // Enforce strict mutually exclusive role checks
+  for (const track of CONFLICTING_TRACKS) {
+    if (track.target.test(target)) {
+      if (track.conflicts.some((c) => c.test(title)) && !track.allowIfTitleAlsoHas.test(title)) {
+        return false;
+      }
+    }
+  }
 
   // Find tech/domain tags present in the user search query
   const targetTechs = TECH_DOMAINS.filter((tech) => {
@@ -146,7 +171,7 @@ export function roleMatches(job, userRole) {
       return new RegExp(`\\b${escapeRe(otherTech)}\\b`, 'i').test(title);
     });
 
-    // Conflicting tech (e.g. "React Developer" when user searched "Java developer") -> REJECT!
+    // Conflicting tech (e.g. "React Developer" when user searched "Java developer" or "Backend developer") -> REJECT!
     if (titleHasConflictingTech) return false;
 
     // 3. If title is generic (e.g. "Software Engineer"), check if description mentions the target tech
@@ -154,6 +179,9 @@ export function roleMatches(job, userRole) {
       if (tech === 'java') {
         return /\bjava\b/i.test(desc) && !/\bjavascript\b/i.test(desc);
       }
+      // Ignore boilerplate mentions like "collaborate with backend team"
+      const boilerplate = new RegExp(`(?:collaborate|interface|coordinate|liaise|work|communicate)\\s+with\\s+(?:our\\s+)?(?:the\\s+)?${escapeRe(tech)}`, 'i');
+      if (boilerplate.test(desc)) return false;
       return new RegExp(`\\b${escapeRe(tech)}\\b`, 'i').test(desc);
     });
 
@@ -174,7 +202,15 @@ export function roleMatches(job, userRole) {
     const inTitle = nonGenericTokens.some((tok) => new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(title));
     if (inTitle) return true;
 
-    const allInDesc = nonGenericTokens.every((tok) => new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(desc));
+    // Only allow description fallback if the title is generic (does not contain an opposing role)
+    const isGenericTitle = Array.from(GENERIC_DESIGNATION_WORDS).some((g) => new RegExp(`\\b${g}\\b`, 'i').test(title));
+    if (!isGenericTitle) return false;
+
+    const allInDesc = nonGenericTokens.every((tok) => {
+      const boilerplate = new RegExp(`(?:collaborate|interface|coordinate|liaise|work|communicate)\\s+with\\s+(?:our\\s+)?(?:the\\s+)?${escapeRe(tok)}`, 'i');
+      if (boilerplate.test(desc)) return false;
+      return new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(desc);
+    });
     return allInDesc;
   }
 

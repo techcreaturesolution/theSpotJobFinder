@@ -190,9 +190,16 @@ export default function JobsTable({ items, educationLabels = [] }) {
                   <td className="td whitespace-nowrap text-xs text-[#775144]">{postedLabel(j)}</td>
                   <td className="td text-right">
                     {canApply ? (
-                      <button type="button" className="btn-primary whitespace-nowrap px-3 py-1.5" onClick={() => applyToJob(j)}>
-                        {j.applyUrl || j.applyOptions?.length || j.sourceUrl ? 'Apply ↗' : 'Email HR'}
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <button type="button" className="btn-primary whitespace-nowrap px-3 py-1.5" onClick={() => applyToJob(j)}>
+                          {j.applyUrl || j.applyOptions?.length || j.sourceUrl ? 'Apply ↗' : 'Email HR'}
+                        </button>
+                        {j.companyWebsite && hostOf(j.companyWebsite) !== hostOf(j.applyUrl) && (
+                          <a href={j.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-[#775144] hover:text-[#2A0800] hover:underline whitespace-nowrap">
+                            Company Site ↗
+                          </a>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-stone-400">No link</span>
                     )}
