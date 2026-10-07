@@ -20,8 +20,6 @@ const jobSearchSchema = new mongoose.Schema(
     resultCount: { type: Number, default: 0 },
     hiddenUnverified: { type: Number, default: 0 },
     durationMs: Number,
-    cached: { type: Boolean, default: false },
-    cachedAt: Date,
     adGate: adGateDefinition,
     jobs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'JobPosting' }],
   },

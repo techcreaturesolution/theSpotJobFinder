@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { User } from '../models/User.js';
 import { requireAuth, signToken } from '../middleware/auth.js';
-import { employerProfileSchema, profileSchema } from '../services/profile.js';
 import { HttpError } from '../utils/httpError.js';
 
 const router = Router();
@@ -18,26 +17,38 @@ function checkDomain(email) {
   }
 }
 
-export function roleFor(user) {
-  if (env.masterAdminEmails.includes(user.email)) return 'master';
-  if (user.role === 'master') return 'admin';
-  if (env.adminEmails.includes(user.email) && !user.roleManaged) return 'admin';
-  return user.role;
+export function roleFor({ email, role, roleManaged } = {}) {
+  const normalized = String(email || '').toLowerCase().trim();
+  if (env.masterAdminEmails.includes(normalized)) return 'master';
+  if (role === 'master') return 'admin';
+  if (roleManaged && role) return role;
+  if (env.adminEmails.includes(normalized)) return 'admin';
+  return role || 'user';
 }
 
 async function upsertUser({ email, name, picture, googleId }) {
-  const normalized = email.toLowerCase();
+  const normalized = email.toLowerCase().trim();
+  const existing = await User.findOne({ email: normalized });
+  const role = roleFor({
+    email: normalized,
+    role: existing?.role,
+    roleManaged: existing?.roleManaged,
+  });
+
   const user = await User.findOneAndUpdate(
     { email: normalized },
     {
-      $set: { picture, lastLoginAt: new Date(), ...(googleId ? { googleId } : {}) },
+      $set: {
+        name,
+        picture,
+        lastLoginAt: new Date(),
+        role,
+        ...(googleId ? { googleId } : {}),
+      },
       $setOnInsert: { email: normalized },
     },
     { upsert: true, returnDocument: 'after' },
   );
-  if (name && !user.profileUpdatedAt) user.name = name;
-  user.role = roleFor(user);
-  if (user.isModified()) await user.save();
   if (!user.active) throw new HttpError(403, 'Account disabled');
   return user;
 }
@@ -80,29 +91,6 @@ router.post('/dev', async (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user.toPublic() });
-});
-
-router.put('/account-type', requireAuth, async (req, res) => {
-  const { type } = z.object({ type: z.enum(['user', 'employer']) }).parse(req.body);
-  if (!['user', 'employer'].includes(req.user.role)) throw new HttpError(400, 'Admin accounts cannot switch to a job seeker or employer account');
-  req.user.role = type;
-  await req.user.save();
-  res.json({ token: signToken(req.user), user: req.user.toPublic() });
-});
-
-router.put('/profile', requireAuth, async (req, res) => {
-  const profile = (req.user.role === 'employer' ? employerProfileSchema : profileSchema).parse(req.body);
-  if (await User.exists({ phone: profile.phone, _id: { $ne: req.user._id } })) {
-    throw new HttpError(409, 'This mobile number is already registered with another account');
-  }
-  Object.assign(req.user, profile, { profileUpdatedAt: new Date() });
-  try {
-    await req.user.save();
-  } catch (err) {
-    if (err?.code === 11000) throw new HttpError(409, 'This mobile number is already registered with another account');
-    throw err;
-  }
   res.json({ user: req.user.toPublic() });
 });
 

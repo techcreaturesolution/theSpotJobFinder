@@ -22,7 +22,5 @@ api.interceptors.response.use(
 );
 
 export function errMsg(err) {
-  const data = err?.response?.data;
-  if (data?.error === 'Validation failed' && data.details?.[0]?.message) return data.details[0].message;
-  return data?.error || err?.message || 'Something went wrong';
+  return err?.response?.data?.error || err?.message || 'Something went wrong';
 }

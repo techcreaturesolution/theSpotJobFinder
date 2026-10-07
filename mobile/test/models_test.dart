@@ -1,6 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:thespot_jobfinder/api.dart';
-import 'package:thespot_jobfinder/app_state.dart';
 import 'package:thespot_jobfinder/models.dart';
 
 Map<String, dynamic> job(
@@ -77,29 +75,5 @@ void main() {
     expect(s.running, isTrue);
     expect(s.adGate.watchedSeconds, 12);
     expect(s.place, 'Surat, Gujarat');
-  });
-
-  test('only job seekers without a complete profile are sent to the form', () {
-    expect(userNeedsProfile({'role': 'user'}), isTrue);
-    expect(
-      userNeedsProfile({'role': 'user', 'profileComplete': true}),
-      isFalse,
-    );
-    expect(userNeedsProfile({'role': 'admin'}), isFalse);
-    expect(userNeedsProfile(null), isFalse);
-  });
-
-  test('validation errors show the field message', () {
-    expect(
-      errorMessage({
-        'error': 'Validation failed',
-        'details': [
-          {'message': 'Enter a valid 10-digit Indian mobile number'},
-        ],
-      }, 400),
-      'Enter a valid 10-digit Indian mobile number',
-    );
-    expect(errorMessage({'error': 'Nope'}, 403), 'Nope');
-    expect(errorMessage({}, 500), 'Request failed (500)');
   });
 }

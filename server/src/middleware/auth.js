@@ -32,8 +32,3 @@ export function requireMaster(req, _res, next) {
   if (req.user?.role !== 'master') throw new HttpError(403, 'Master admin access required');
   next();
 }
-
-export function requireEmployer(req, _res, next) {
-  if (req.user?.role !== 'employer') throw new HttpError(403, 'Employer account required');
-  next();
-}

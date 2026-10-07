@@ -1,40 +1,94 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { JOB_LEVELS, JobPosting, REVIEW_STATUSES } from '../models/JobPosting.js';
-import { AgentRun } from '../models/AgentRun.js';
+import { JOB_LEVELS, JobPosting } from '../models/JobPosting.js';
 import { AutoImportRule } from '../models/AutoImportRule.js';
 import { JobSearch } from '../models/JobSearch.js';
 import { User } from '../models/User.js';
 import { CATEGORY_KEYS } from '../services/jobs/categories.js';
 import { EDUCATION_KEYS } from '../services/jobs/education.js';
 import { claimRule, runImportRule } from '../services/jobs/autoImport.js';
-import { identityKey } from '../services/jobs/dedupe.js';
+import { canonicalUrl, identityKey, uniquePhones } from '../services/jobs/dedupe.js';
 import { extractJobDrafts } from '../services/jobs/importer.js';
 import { INDIAN_STATES } from '../services/jobs/india.js';
-import { assertNotDuplicate, httpUrl, portalJobSchema, toPortalJob } from '../services/jobs/portalJobs.js';
+import { extractPhones } from '../services/jobs/parse.js';
 import { llmEnabled } from '../services/agent/llm.js';
-import { autoImportAllowance, extractAllowance } from '../services/limits.js';
 import { HttpError } from '../utils/httpError.js';
 
 const router = Router();
 
+const httpUrl = z
+  .string()
+  .trim()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), 'Must be an http(s) URL');
+
+const optionalUrl = z.union([httpUrl, z.literal('')]).default('');
+
+const portalJobSchema = z.object({
+  title: z.string().trim().min(2).max(140),
+  companyName: z.string().trim().min(1).max(120),
+  category: z.enum(CATEGORY_KEYS),
+  level: z.union([z.enum(JOB_LEVELS), z.literal('')]).default(''),
+  experienceText: z.string().trim().max(60).default(''),
+  education: z.array(z.enum(EDUCATION_KEYS)).max(8).default([]),
+  educationText: z.string().trim().max(200).default(''),
+  validThrough: z.union([z.null(), z.literal(''), z.coerce.date()]).optional(),
+  description: z.string().trim().max(8000).default(''),
+  city: z.string().trim().max(60).default(''),
+  state: z.string().trim().max(60).default(''),
+  address: z.string().trim().max(300).default(''),
+  email: z.union([z.string().trim().email(), z.literal('')]).default(''),
+  phone: z.string().trim().max(40).default(''),
+  companyWebsite: optionalUrl,
+  applyUrl: optionalUrl,
+  sourceUrl: optionalUrl,
+  importMethod: z.union([z.enum(['ai_paste', 'ai_auto']), z.literal('')]).default(''),
+  salary: z.string().trim().max(80).default(''),
+  employmentType: z.string().trim().max(40).default(''),
+  active: z.boolean().default(true),
+});
+
+function toPortalJob(d) {
+  const { email, phone, level, importMethod, ...rest } = d;
+  return {
+    ...rest,
+    level: level || null,
+    importMethod: importMethod || null,
+    sourceKey: canonicalUrl(d.sourceUrl),
+    location: [d.city, d.state, 'India'].filter(Boolean).join(', '),
+    emails: email ? [email.toLowerCase()] : [],
+    phones: phone ? uniquePhones(extractPhones(phone).length ? extractPhones(phone) : [phone]) : [],
+    platform: 'This portal',
+    via: 'This portal',
+    applyOptions: d.applyUrl ? [{ title: d.companyName, link: d.applyUrl }] : [],
+    validThrough: d.validThrough || null,
+    verification: { status: 'verified', method: 'portal', checkedAt: new Date() },
+  };
+}
+
 router.get('/stats', async (_req, res) => {
-  const [users, jobs, portalJobs, jobSearches, videoViews, applyAgg, pendingEmployerJobs] = await Promise.all([
+  const [users, jobs, portalJobs, jobSearches, videoViews, applyAgg] = await Promise.all([
     User.countDocuments(),
     JobPosting.countDocuments(),
     JobPosting.countDocuments({ origin: 'portal' }),
     JobSearch.countDocuments(),
     JobSearch.countDocuments({ 'adGate.required': true, 'adGate.completedAt': { $ne: null } }),
     JobPosting.aggregate([{ $group: { _id: null, clicks: { $sum: '$applyClicks' } } }]),
-    JobPosting.countDocuments({ origin: 'portal', 'review.status': 'pending' }),
   ]);
-  res.json({ users, jobs, portalJobs, jobSearches, videoViews, applyClicks: applyAgg[0]?.clicks || 0, pendingEmployerJobs });
+  res.json({ users, jobs, portalJobs, jobSearches, videoViews, applyClicks: applyAgg[0]?.clicks || 0 });
 });
 
 router.get('/jobs', async (_req, res) => {
   res.json({ items: await JobPosting.find({ origin: 'portal' }).select('-key').sort({ createdAt: -1 }).limit(500).lean() });
 });
+
+async function assertNotDuplicate(data, exceptId) {
+  const dedupeKey = identityKey(data);
+  const dup = dedupeKey && (await JobPosting.exists({ dedupeKey, origin: 'portal', active: true, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }));
+  if (dup) throw new HttpError(409, 'This job (same title, company and city) is already posted');
+  return dedupeKey;
+}
 
 const extractSchema = z
   .object({ text: z.string().max(30000).default(''), url: z.union([httpUrl, z.literal('')]).default('') })
@@ -42,17 +96,7 @@ const extractSchema = z
 
 router.post('/jobs/extract', async (req, res) => {
   const body = extractSchema.parse(req.body);
-  const allowance = await extractAllowance(req.user);
-  if (!allowance.allowed) throw new HttpError(allowance.status, allowance.reason);
-  const started = Date.now();
-  let result;
-  try {
-    result = await extractJobDrafts(body);
-  } catch (err) {
-    await AgentRun.create({ agent: 'ai_extract', user: req.user._id, status: 'failed', error: String(err.message || err).slice(0, 300), durationMs: Date.now() - started });
-    throw err;
-  }
-  await AgentRun.create({ agent: 'ai_extract', user: req.user._id, method: result.method, drafts: result.drafts.length, durationMs: Date.now() - started });
+  const result = await extractJobDrafts(body);
   const keys = result.drafts.map((d) => identityKey(d)).filter(Boolean);
   const dups = keys.length ? await JobPosting.find({ origin: 'portal', dedupeKey: { $in: keys } }).select('dedupeKey').lean() : [];
   const dupKeys = new Set(dups.map((d) => d.dedupeKey));
@@ -78,32 +122,6 @@ router.put('/jobs/:id', async (req, res) => {
     runValidators: true,
   });
   if (!job) throw new HttpError(404, 'Job not found');
-  res.json({ job });
-});
-
-router.get('/employer-jobs', async (req, res) => {
-  const { status } = z.object({ status: z.union([z.enum(REVIEW_STATUSES), z.literal('')]).default('pending') }).parse(req.query);
-  const items = await JobPosting.find({ origin: 'portal', 'review.status': status || { $ne: null } })
-    .select('-key')
-    .populate('postedBy', 'name email phone company')
-    .sort({ updatedAt: -1 })
-    .limit(500)
-    .lean();
-  res.json({ items });
-});
-
-router.post('/jobs/:id/review', async (req, res) => {
-  const { action, note } = z
-    .object({ action: z.enum(['approve', 'reject']), note: z.string().trim().max(500).default('') })
-    .refine((d) => d.action === 'approve' || d.note.length >= 3, { message: 'Tell the employer why the job was rejected', path: ['note'] })
-    .parse(req.body);
-  const job = await JobPosting.findOne({ _id: req.params.id, origin: 'portal', 'review.status': { $ne: null } });
-  if (!job) throw new HttpError(404, 'Employer job not found');
-  if (action === 'approve') await assertNotDuplicate(job, job._id);
-  job.active = action === 'approve';
-  job.review = { status: action === 'approve' ? 'approved' : 'rejected', note, reviewedBy: req.user._id, reviewedAt: new Date() };
-  if (action === 'approve') job.verification = { status: 'verified', method: 'employer', checkedAt: new Date() };
-  await job.save();
   res.json({ job });
 });
 
@@ -149,11 +167,9 @@ router.delete('/auto-import/:id', async (req, res) => {
 
 router.post('/auto-import/:id/run', async (req, res) => {
   if (!(await AutoImportRule.exists({ _id: req.params.id }))) throw new HttpError(404, 'Rule not found');
-  const allowance = await autoImportAllowance({ bypassLimits: req.user.role === 'master' });
-  if (!allowance.allowed) throw new HttpError(allowance.status, allowance.reason);
   const rule = await claimRule({ _id: req.params.id });
   if (!rule) throw new HttpError(409, 'This rule is already running');
-  res.json({ result: await runImportRule(rule, { postedBy: req.user._id, userId: req.user._id, trigger: 'manual', maxPosts: allowance.remainingPosts }) });
+  res.json({ result: await runImportRule(rule, { postedBy: req.user._id }) });
 });
 
 router.get('/users', async (_req, res) => {
@@ -166,6 +182,16 @@ router.get('/users', async (_req, res) => {
       jobSearches: jobsById.get(String(u._id)) || 0,
     })),
   });
+});
+
+router.patch('/users/:id', async (req, res) => {
+  const body = z.object({ role: z.enum(['user', 'admin']).optional(), active: z.boolean().optional() }).parse(req.body);
+  if (String(req.params.id) === String(req.user._id) && (body.role === 'user' || body.active === false)) {
+    throw new HttpError(400, 'You cannot demote or disable yourself');
+  }
+  const user = await User.findByIdAndUpdate(req.params.id, body, { returnDocument: 'after' });
+  if (!user) throw new HttpError(404, 'User not found');
+  res.json({ user: user.toPublic() });
 });
 
 export default router;

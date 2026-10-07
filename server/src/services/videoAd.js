@@ -9,7 +9,7 @@ const DEMO_VIDEO = { title: 'Demo video ad', videoUrl: '/demo-video-ad.mp4', dem
 
 export function newAdGate(user) {
   const { required, seconds, exemptAdmins } = env.videoAd;
-  return { required: required && !(exemptAdmins && ['admin', 'master'].includes(user.role)), seconds };
+  return { required: required && !(exemptAdmins && user.role === 'admin'), seconds };
 }
 
 export function adGateInfo(doc) {

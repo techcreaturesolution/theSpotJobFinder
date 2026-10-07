@@ -30,10 +30,6 @@ const PLATFORMS = [
   ['olx.in', 'OLX Jobs'],
   ['jobhai.com', 'Job Hai'],
   ['ncs.gov.in', 'National Career Service'],
-  ['adzuna.in', 'Adzuna'],
-  ['adzuna.co.in', 'Adzuna'],
-  ['jooble.org', 'Jooble'],
-  ['careerjet.co.in', 'Careerjet'],
   ['google.com', 'Google'],
 ];
 

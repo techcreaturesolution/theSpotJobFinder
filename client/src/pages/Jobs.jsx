@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+  import { useCallback, useEffect, useMemo, useState } from 'react';
 import GoogleAd from '../components/GoogleAd.jsx';
 import JobsTable from '../components/JobsTable.jsx';
 import VideoAdGate from '../components/VideoAdGate.jsx';
@@ -15,16 +15,13 @@ const POSTED_LABEL = { 1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 3
 const PROVIDER_LABEL = {
   portal: 'Jobs posted on this portal',
   google_jobs: 'Google Jobs (SerpAPI)',
+  linkedin: 'LinkedIn Jobs (Apify)',
   'web:serpapi': 'Web & social search (SerpAPI)',
   'web:google_cse': 'Web & social search (Google CSE)',
   'web:bing_html': 'Web search (Bing)',
-  jsearch: 'JSearch',
-  adzuna: 'Adzuna',
-  jooble: 'Jooble',
-  careerjet: 'Careerjet',
 };
 
-const EMPTY_FORM = { level: 'fresher', prompt: '', category: '', education: '', state: '', city: '', postedWithin: 30, verifiedOnly: true };
+const EMPTY_FORM = { level: 'fresher', prompt: '', category: '', education: '', state: '', city: '', postedWithin: 30, verifiedOnly: false };
 
 export default function Jobs() {
   const [meta, setMeta] = useState(null);
@@ -98,7 +95,6 @@ export default function Jobs() {
       setFilter({ text: '', platform: '', contact: false });
       setCurrent({ search: data.search, items: [] });
       setActiveId(data.search._id);
-      api.get('/jobs/meta').then((r) => setMeta(r.data)).catch(() => {});
     } catch (err) {
       setError(errMsg(err));
     } finally {
@@ -154,14 +150,14 @@ export default function Jobs() {
             ['fresher', 'I am a Fresher'],
             ['experienced', 'I am Experienced'],
           ].map(([k, l]) => (
-            <label key={k} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium ${form.level === k ? 'border-blue-700 bg-blue-700 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>
+            <label key={k} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${form.level === k ? 'border-[#775144] bg-[#775144] text-white shadow-sm font-semibold' : 'border-[#E5D3D1] bg-white text-[#775144] hover:bg-[#FAF5F4] hover:border-[#BEA8A7]'}`}>
               <input type="radio" name="level" value={k} checked={form.level === k} onChange={set('level')} className="sr-only" />
               {l}
             </label>
           ))}
         </div>
         <div>
-          <label htmlFor="job-prompt" className="text-sm font-medium text-slate-700">
+          <label htmlFor="job-prompt" className="text-sm font-medium text-[#2A0800]">
             What job are you looking for?
           </label>
           <textarea
@@ -175,7 +171,7 @@ export default function Jobs() {
           />
           <div className="mt-1 flex flex-wrap gap-1">
             {EXAMPLES[form.level].map((x) => (
-              <button key={x} type="button" className="badge bg-slate-100 text-slate-600 hover:bg-slate-200" onClick={() => setForm((f) => ({ ...f, prompt: x }))}>
+              <button key={x} type="button" className="badge border border-[#E5D3D1] bg-[#FAF5F4] text-[#775144] transition hover:bg-[#F4DBD8] hover:text-[#2A0800]" onClick={() => setForm((f) => ({ ...f, prompt: x }))}>
                 {x}
               </button>
             ))}
@@ -234,7 +230,7 @@ export default function Jobs() {
           </label>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-[#F4DBD8]">
             <input type="checkbox" checked={form.verifiedOnly} onChange={set('verifiedOnly')} />
             Show only verified jobs (confirmed on the original posting)
           </label>
@@ -243,18 +239,16 @@ export default function Jobs() {
           </button>
         </div>
         {meta && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[#775144]">
             <span>Sources:</span>
-            {['portal', ...(meta.providers.googleJobs ? ['google_jobs'] : []), ...(meta.providers.webSearch ? [`web:${meta.providers.webSearch}`] : []), ...Object.keys(meta.providers.apis || {}).filter((k) => meta.providers.apis[k])].map((p) => (
+            {['portal', ...(meta.providers.googleJobs ? ['google_jobs'] : []), ...(meta.providers.linkedin ? ['linkedin'] : []), ...(meta.providers.webSearch ? [`web:${meta.providers.webSearch}`] : [])].map((p) => (
               <span key={p} className="badge bg-green-50 text-green-700">
                 {PROVIDER_LABEL[p] || p}
               </span>
             ))}
             {!meta.providers.googleJobs && <span className="badge bg-amber-50 text-amber-700">Add SERPAPI_KEY to include Google Jobs</span>}
             <span className="badge bg-slate-100 text-slate-600">AI verification agent: {meta.ai === 'openai' ? 'OpenAI' : 'rules (add OPENAI_API_KEY)'}</span>
-            <span>
-              · {meta.dailyLimit == null ? 'No daily search limit for your account' : `${meta.searchesToday} of ${meta.dailyLimit} searches used today`} · A 30-second video ad plays with every search
-            </span>
+            <span>· A {meta.dailyLimit}-search daily limit applies · A 1-minute video ad plays with every search</span>
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -264,7 +258,7 @@ export default function Jobs() {
       {status === 'failed' && <div className="card border-red-200 bg-red-50 text-sm text-red-700">{current.search.error || 'The job search failed. Please try again.'}</div>}
       {searching && !locked && (
         <div className="card flex items-center gap-3 text-sm text-slate-600">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-700 border-t-transparent" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#775144] border-t-transparent" />
           Searching Google Jobs, company career pages and job portals, and verifying every listing against its source…
         </div>
       )}
@@ -280,7 +274,7 @@ export default function Jobs() {
                 {[result.search.level === 'fresher' ? 'Fresher' : 'Experienced', labelOf(meta?.categories, result.search.category), labelOf(meta?.education, result.search.education), [result.search.city, result.search.state].filter(Boolean).join(', ') || 'All India', POSTED_LABEL[result.search.postedWithin]]
                   .filter(Boolean)
                   .join(' · ')}{' '}
-                {result.search.cached ? ` · saved results from ${new Date(result.search.cachedAt).toLocaleString()}` : ` · searched in ${(result.search.durationMs / 1000).toFixed(1)}s`}
+                · searched in {(result.search.durationMs / 1000).toFixed(1)}s
                 {result.search.hiddenUnverified > 0 && ` · ${result.search.hiddenUnverified} unverified listings hidden`}
               </div>
             </div>
@@ -313,23 +307,23 @@ export default function Jobs() {
 
       {history.length > 0 && (
         <div className="card">
-          <h2 className="mb-2 font-semibold">Your recent job searches</h2>
-          <ul className="divide-y divide-slate-100">
+          <h2 className="mb-2 font-semibold text-[#2A0800]">Your recent job searches</h2>
+          <ul className="divide-y divide-[#E5D3D1]">
             {history.map((s) => (
               <li key={s._id} className="flex items-center justify-between gap-3 py-2 text-sm">
                 <div className="min-w-0">
-                  <div className="truncate text-slate-800">{s.query}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="truncate font-medium text-[#2A0800]">{s.query}</div>
+                  <div className="text-xs text-[#775144]">
                     {s.status === 'completed' ? `${s.resultCount} jobs` : s.status === 'failed' ? 'Failed' : 'Searching…'} · {new Date(s.createdAt).toLocaleString()}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-3">
                   {s.status === 'completed' && (
-                    <button type="button" className="text-xs font-medium text-blue-700" onClick={() => openSearch(s)}>
+                    <button type="button" className="text-xs font-medium text-[#775144] hover:text-[#2A0800] hover:underline" onClick={() => openSearch(s)}>
                       View results
                     </button>
                   )}
-                  <button type="button" className="text-xs font-medium text-blue-700" onClick={() => rerun(s)}>
+                  <button type="button" className="text-xs font-medium text-[#775144] hover:text-[#2A0800] hover:underline" onClick={() => rerun(s)}>
                     Search again
                   </button>
                 </div>

@@ -4,7 +4,6 @@ import 'package:google_mobile_ads/google_mobile_ads.dart' show MobileAds;
 import 'api.dart';
 import 'app_state.dart';
 import 'screens/login_screen.dart';
-import 'screens/profile_screen.dart';
 import 'screens/search_screen.dart';
 
 Future<void> main() async {
@@ -40,10 +39,7 @@ class _Home extends StatelessWidget {
   const _Home();
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    if (app.user == null) return const LoginScreen();
-    if (app.needsProfile) return const ProfileScreen();
-    return const SearchScreen();
-  }
+  Widget build(BuildContext context) => AppScope.of(context).user == null
+      ? const LoginScreen()
+      : const SearchScreen();
 }

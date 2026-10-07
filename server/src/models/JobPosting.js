@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 export const JOB_LEVELS = ['fresher', 'experienced'];
 export const JOB_ORIGINS = ['portal', 'aggregated'];
 export const VERIFICATION_STATUSES = ['verified', 'unverified'];
-export const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
 
 const jobPostingSchema = new mongoose.Schema(
   {
@@ -49,15 +48,8 @@ const jobPostingSchema = new mongoose.Schema(
     },
     lastSeenAt: { type: Date, default: Date.now, index: true },
     active: { type: Boolean, default: true },
-    closedAt: { type: Date, default: null },
     applyClicks: { type: Number, default: 0 },
     postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    review: {
-      status: { type: String, enum: [...REVIEW_STATUSES, null], default: null, index: true },
-      note: String,
-      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      reviewedAt: Date,
-    },
   },
   { timestamps: true },
 );

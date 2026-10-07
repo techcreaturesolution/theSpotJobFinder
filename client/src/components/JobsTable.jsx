@@ -16,7 +16,6 @@ const VERIFY_LABEL = {
   json_ld: 'Confirmed from the job page’s structured data',
   ai_agent: 'Confirmed by the AI agent from the job page',
   source_page: 'Confirmed on the job page',
-  employer: 'Posted by the employer and approved by our team',
 };
 
 const LEVEL_BADGE = { fresher: 'bg-green-100 text-green-800', experienced: 'bg-indigo-100 text-indigo-800' };
@@ -30,14 +29,14 @@ const hostOf = (u) => {
 
 function Details({ job, eduLabel }) {
   return (
-    <div className="grid gap-4 bg-slate-50 p-4 text-sm md:grid-cols-3">
+    <div className="grid gap-4 border-t border-[#E5D3D1] bg-[#FAF5F4] p-4 text-sm md:grid-cols-3">
       <div className="md:col-span-2">
-        <div className="mb-1 font-semibold text-slate-900">Job description</div>
-        <div className="max-h-72 overflow-y-auto whitespace-pre-line text-slate-700">{job.description || 'No description was published with this listing. Open the apply link for full details.'}</div>
+        <div className="mb-1 font-semibold text-[#2A0800]">Job description</div>
+        <div className="max-h-72 overflow-y-auto whitespace-pre-line text-[#381A12]">{job.description || 'No description was published with this listing. Open the apply link for full details.'}</div>
         {job.highlights?.map((h) => (
           <div key={h.title} className="mt-3">
-            <div className="font-semibold text-slate-900">{h.title}</div>
-            <ul className="ml-5 list-disc text-slate-700">
+            <div className="font-semibold text-[#2A0800]">{h.title}</div>
+            <ul className="ml-5 list-disc text-[#381A12]">
               {h.items.map((i) => (
                 <li key={i}>{i}</li>
               ))}
@@ -61,24 +60,24 @@ function Details({ job, eduLabel }) {
           .filter(([, v]) => v)
           .map(([k, v]) => (
             <div key={k}>
-              <div className="text-xs uppercase tracking-wide text-slate-400">{k}</div>
-              <div className="text-slate-800">{v}</div>
+              <div className="text-xs uppercase tracking-wide text-[#775144] font-medium">{k}</div>
+              <div className="font-medium text-[#2A0800]">{v}</div>
             </div>
           ))}
         {job.companyWebsite && (
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-400">Website</div>
-            <a href={job.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-blue-700">
+            <div className="text-xs uppercase tracking-wide text-[#775144] font-medium">Website</div>
+            <a href={job.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-[#775144] hover:text-[#2A0800] hover:underline">
               {hostOf(job.companyWebsite)}
             </a>
           </div>
         )}
         {job.applyOptions?.length > 1 && (
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-400">Apply on</div>
+            <div className="text-xs uppercase tracking-wide text-[#775144] font-medium">Apply on</div>
             <div className="mt-1 flex flex-wrap gap-1">
               {job.applyOptions.map((o) => (
-                <button key={o.link} type="button" onClick={() => applyToJob(job, o.link)} className="badge bg-white text-blue-700 ring-1 ring-slate-200 hover:bg-blue-50">
+                <button key={o.link} type="button" onClick={() => applyToJob(job, o.link)} className="badge bg-white text-[#2A0800] ring-1 ring-[#BEA8A7] hover:bg-[#F4DBD8]">
                   {o.title || hostOf(o.link)}
                 </button>
               ))}
@@ -95,13 +94,13 @@ export default function JobsTable({ items, educationLabels = [] }) {
   const eduLabel = (k) => educationLabels.find((e) => e.key === k)?.label || k;
   if (!items.length) return null;
   return (
-    <div className="card overflow-x-auto p-0">
-      <table className="min-w-full divide-y divide-slate-200">
-        <thead className="bg-slate-50">
+    <div className="overflow-x-auto rounded-xl border border-[#E5D3D1] bg-white p-0 shadow-sm">
+      <table className="min-w-full divide-y divide-[#E5D3D1]">
+        <thead className="bg-[#FAF5F4]">
           <tr>
             <th className="th">#</th>
             <th className="th">Job</th>
-            <th className="th">Company &amp; address</th>
+            <th className="th">Company Name</th>
             <th className="th">Location</th>
             <th className="th">Experience</th>
             <th className="th">Education</th>
@@ -113,63 +112,63 @@ export default function JobsTable({ items, educationLabels = [] }) {
             <th className="th" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-[#E5D3D1] bg-white">
           {items.map((j, i) => {
             const canApply = j.applyUrl || j.applyOptions?.length || j.sourceUrl || j.emails?.length;
             return (
               <Fragment key={j._id}>
-                <tr className={open === j._id ? 'bg-blue-50/40' : 'hover:bg-slate-50'}>
-                  <td className="td text-xs text-slate-400">{i + 1}</td>
+                <tr className={open === j._id ? 'bg-[#F4DBD8]/35' : 'hover:bg-[#FAF5F4]'}>
+                  <td className="td text-xs font-medium text-[#775144]">{i + 1}</td>
                   <td className="td min-w-[220px]">
-                    <button type="button" onClick={() => setOpen(open === j._id ? null : j._id)} className="text-left font-medium text-slate-900 hover:text-blue-700">
+                    <button type="button" onClick={() => setOpen(open === j._id ? null : j._id)} className="text-left font-semibold text-[#2A0800] hover:text-[#775144]">
                       {j.title}
                     </button>
                     {j.verification?.status === 'verified' ? (
-                      <span className="badge ml-1 bg-green-100 text-green-800" title={VERIFY_LABEL[j.verification.method] || 'Verified'}>
+                      <span className="badge ml-1 bg-green-50 text-green-700 border border-green-200" title={VERIFY_LABEL[j.verification.method] || 'Verified'}>
                         Verified
                       </span>
                     ) : (
-                      <span className="badge ml-1 bg-slate-100 text-slate-500" title="Could not be confirmed on the original page">
+                      <span className="badge ml-1 bg-stone-100 text-stone-600 border border-stone-200" title="Could not be confirmed on the original page">
                         Unverified
                       </span>
                     )}
-                    <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">{j.description}</div>
-                    <button type="button" onClick={() => setOpen(open === j._id ? null : j._id)} className="mt-1 text-xs font-medium text-blue-700">
+                    <div className="mt-0.5 line-clamp-2 text-xs text-[#5C3830]">{j.description}</div>
+                    <button type="button" onClick={() => setOpen(open === j._id ? null : j._id)} className="mt-1 text-xs font-semibold text-[#775144] hover:underline">
                       {open === j._id ? 'Hide details ▲' : 'View full description ▼'}
                     </button>
                   </td>
                   <td className="td min-w-[180px]">
                     <div className="flex items-start gap-2">
-                      {j.logo && <img src={j.logo} alt="" className="h-8 w-8 shrink-0 rounded object-contain" referrerPolicy="no-referrer" />}
+                      {j.logo && <img src={j.logo} alt="" className="h-8 w-8 shrink-0 rounded object-contain bg-stone-50 border border-[#E5D3D1] p-0.5" referrerPolicy="no-referrer" />}
                       <div>
-                        <div className="font-medium text-slate-800">{j.companyName || '—'}</div>
-                        {j.address && <div className="text-xs text-slate-500">{j.address}</div>}
+                        <div className="font-semibold text-[#2A0800]">{j.companyName || '—'}</div>
+                        {j.address && <div className="text-xs text-[#775144]">{j.address}</div>}
                         {j.companyWebsite && (
-                          <a href={j.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-700">
+                          <a href={j.companyWebsite} target="_blank" rel="noopener noreferrer" className="text-xs text-[#775144] hover:text-[#2A0800] hover:underline">
                             {hostOf(j.companyWebsite)}
                           </a>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="td text-xs">
-                    {[j.city, j.state].filter(Boolean).join(', ') || j.location || '—'}
-                    {j.workFromHome && <div className="badge mt-1 bg-teal-100 text-teal-800">WFH</div>}
+                  <td className="td text-xs text-[#381A12]">
+                    {[j.city, j.state].filter(Boolean).join(', ') || j.location || j.address || '—'}
+                    {j.workFromHome && <div className="badge mt-1 bg-teal-50 text-teal-800 border border-teal-200">WFH</div>}
                   </td>
-                  <td className="td whitespace-nowrap text-xs">
+                  <td className="td whitespace-nowrap text-xs text-[#381A12]">
                     {j.level && <span className={`badge ${LEVEL_BADGE[j.level]}`}>{j.level === 'fresher' ? 'Fresher' : 'Experienced'}</span>}
-                    {j.experienceText && <div className="mt-1 text-slate-500">{j.experienceText}</div>}
+                    {j.experienceText && <div className="mt-1 text-[#775144]">{j.experienceText}</div>}
                     {!j.level && !j.experienceText && '—'}
                   </td>
-                  <td className="td text-xs">{j.education?.length ? j.education.map(eduLabel).join(', ') : j.educationText || '—'}</td>
-                  <td className="td text-xs">
+                  <td className="td text-xs text-[#381A12]">{j.education?.length ? j.education.map(eduLabel).join(', ') : j.educationText || '—'}</td>
+                  <td className="td text-xs text-[#381A12]">
                     {j.salary || '—'}
-                    {j.employmentType && <div className="text-slate-500">{j.employmentType}</div>}
+                    {j.employmentType && <div className="text-[#775144]">{j.employmentType}</div>}
                   </td>
                   <td className="td text-xs">
                     {j.emails?.length
                       ? j.emails.map((e) => (
-                          <a key={e} href={`mailto:${e}`} className="block text-blue-700">
+                          <a key={e} href={`mailto:${e}`} className="block text-[#775144] hover:text-[#2A0800] hover:underline">
                             {e}
                           </a>
                         ))
@@ -178,24 +177,24 @@ export default function JobsTable({ items, educationLabels = [] }) {
                   <td className="td whitespace-nowrap text-xs">
                     {j.phones?.length
                       ? j.phones.map((p) => (
-                          <a key={p} href={`tel:${p.replace(/\s/g, '')}`} className="block text-blue-700">
+                          <a key={p} href={`tel:${p.replace(/\s/g, '')}`} className="block text-[#775144] hover:text-[#2A0800] hover:underline">
                             {p}
                           </a>
                         ))
                       : '—'}
                   </td>
                   <td className="td text-xs">
-                    <span className="badge bg-slate-100 text-slate-700">{j.platform || 'Web'}</span>
-                    {j.via && j.via !== j.platform && <div className="mt-1 text-slate-400">{j.via}</div>}
+                    <span className="badge bg-[#FAF5F4] text-[#775144] border border-[#E5D3D1]">{j.platform || 'Web'}</span>
+                    {j.via && j.via !== j.platform && <div className="mt-1 text-[#775144]">{j.via}</div>}
                   </td>
-                  <td className="td whitespace-nowrap text-xs">{postedLabel(j)}</td>
+                  <td className="td whitespace-nowrap text-xs text-[#775144]">{postedLabel(j)}</td>
                   <td className="td text-right">
                     {canApply ? (
                       <button type="button" className="btn-primary whitespace-nowrap px-3 py-1.5" onClick={() => applyToJob(j)}>
                         {j.applyUrl || j.applyOptions?.length || j.sourceUrl ? 'Apply ↗' : 'Email HR'}
                       </button>
                     ) : (
-                      <span className="text-xs text-slate-400">No link</span>
+                      <span className="text-xs text-stone-400">No link</span>
                     )}
                   </td>
                 </tr>

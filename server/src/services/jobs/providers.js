@@ -2,38 +2,19 @@ import { env } from '../../config/env.js';
 import { http, isCompanyWebsite } from '../../utils/http.js';
 import { mapsProvider, searchGoogleMaps } from '../sources/googleMaps.js';
 import { webSearch, webSearchProvider } from '../sources/webSearch.js';
-import { apiSourcesConfigured } from './apiSources.js';
 import { isListingPage, parseResultTitle, platformOf } from './parse.js';
 
 export function jobProviders() {
   return {
     googleJobs: Boolean(env.serpApiKey),
-    apis: apiSourcesConfigured(),
     webSearch: webSearchProvider(),
     maps: mapsProvider() === 'openstreetmap' ? null : mapsProvider(),
+    linkedin: Boolean(env.apify?.token),
   };
 }
 
-export function googleJobsQueries({ q, role, levelWord, place }) {
-  const r = role || 'jobs';
-  return [...new Set([
-    q,
-    `${r} jobs in ${place}`,
-    levelWord ? `${r} ${levelWord} hiring ${place}` : `${r} vacancy ${place}`,
-  ].map((x) => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
-}
-
-export async function searchGoogleJobs(queries, num = 30, log = () => { }) {
+export async function searchGoogleJobs(q, num = 20) {
   if (!env.serpApiKey) return [];
-  const list = [].concat(queries).filter(Boolean);
-  const settled = await Promise.allSettled(list.map((q, i) => googleJobsPages(q, i === 0 ? num : 10)));
-  const failed = settled.filter((r) => r.status === 'rejected');
-  failed.forEach((r) => log('warn', `Google Jobs query failed: ${[r.reason?.response?.status, r.reason?.message].filter(Boolean).join(' ')}`));
-  if (list.length && failed.length === list.length) throw failed[0].reason;
-  return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-}
-
-async function googleJobsPages(q, num) {
   const out = [];
   let token;
   for (let page = 0; page < Math.ceil(Math.min(num, 30) / 10); page += 1) {
@@ -69,24 +50,20 @@ async function googleJobsPages(q, num) {
   return out;
 }
 
-const JOB_BOARD_GROUPS = [
-  ['apna.co', 'workindia.in', 'internshala.com'],
-  ['naukri.com', 'in.indeed.com'],
-  ['linkedin.com/jobs/view', 'foundit.in', 'shine.com'],
-];
+const JOB_BOARDS = ['apna.co', 'workindia.in', 'naukri.com', 'in.indeed.com', 'linkedin.com/jobs/view', 'foundit.in', 'shine.com', 'internshala.com'];
 const SOCIAL = ['x.com', 'twitter.com', 'linkedin.com/posts', 'facebook.com', 'instagram.com'];
 
 export function webJobQueries({ role, levelWord, place }) {
   const r = role ? `"${role}"` : '';
   const sites = (list) => `(${list.map((s) => `site:${s}`).join(' OR ')})`;
   return [
-    ...JOB_BOARD_GROUPS.map((group) => ({ q: `${sites(group)} ${r} ${levelWord} job ${place}`.replace(/\s+/g, ' ').trim(), kind: 'board' })),
+    { q: `${sites(JOB_BOARDS)} ${r} ${levelWord} job ${place}`.replace(/\s+/g, ' ').trim(), kind: 'board' },
     { q: `${sites(SOCIAL)} "hiring" ${r} ${levelWord} ${place} apply`.replace(/\s+/g, ' ').trim(), kind: 'social' },
     { q: `${r || 'jobs'} ${levelWord} careers "apply now" ${place} -site:naukri.com -site:indeed.com -site:linkedin.com`.replace(/\s+/g, ' ').trim(), kind: 'company' },
   ];
 }
 
-export async function searchWebJobs(params, perQuery = 10, log = () => { }) {
+export async function searchWebJobs(params, perQuery = 10, log = () => {}) {
   if (!webSearchProvider()) return [];
   const queries = webJobQueries(params);
   const settled = await Promise.allSettled(queries.map((x) => webSearch(x.q, perQuery)));
@@ -122,7 +99,7 @@ export async function searchWebJobs(params, perQuery = 10, log = () => { }) {
 
 export async function lookupCompany(name, place) {
   if (!name || mapsProvider() === 'openstreetmap') return null;
-  const rows = await searchGoogleMaps({ businessType: name, location: place }, 1, () => { });
+  const rows = await searchGoogleMaps({ businessType: name, location: place }, 1, () => {});
   const first = rows[0];
   if (!first) return null;
   const n = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');

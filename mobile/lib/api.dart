@@ -33,18 +33,6 @@ class SecureTokenStore implements TokenStore {
       : _storage.write(key: _key, value: token);
 }
 
-String errorMessage(Map<String, dynamic> data, int status) {
-  final details = data['details'];
-  if (data['error'] == 'Validation failed' &&
-      details is List &&
-      details.isNotEmpty &&
-      details.first is Map &&
-      (details.first as Map)['message'] != null) {
-    return (details.first as Map)['message'].toString();
-  }
-  return (data['error'] ?? 'Request failed ($status)').toString();
-}
-
 class ApiClient {
   ApiClient({http.Client? client, String? baseUrl, TokenStore? tokens})
     : _client = client ?? http.Client(),
@@ -72,9 +60,6 @@ class ApiClient {
     String path, [
     Map<String, dynamic>? body,
   ]) => _send('POST', path, body);
-
-  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) =>
-      _send('PUT', path, body);
 
   Future<Map<String, dynamic>> _send(
     String method,
@@ -114,7 +99,10 @@ class ApiClient {
       onUnauthorized?.call();
     }
     if (res.statusCode >= 400) {
-      throw ApiException(res.statusCode, errorMessage(data, res.statusCode));
+      throw ApiException(
+        res.statusCode,
+        (data['error'] ?? 'Request failed (${res.statusCode})').toString(),
+      );
     }
     return data;
   }

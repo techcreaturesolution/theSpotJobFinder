@@ -2,10 +2,10 @@ import OpenAI from 'openai';
 import { env } from '../../config/env.js';
 
 let client;
-let switchedOn = true;
+let aiRuntimeEnabled = true;
 
-export function setAiEnabled(on) {
-  switchedOn = Boolean(on);
+export function setAiEnabled(val) {
+  aiRuntimeEnabled = Boolean(val);
 }
 
 export function llmConfigured() {
@@ -13,7 +13,7 @@ export function llmConfigured() {
 }
 
 export function llmEnabled() {
-  return llmConfigured() && switchedOn;
+  return Boolean(env.openaiApiKey) && aiRuntimeEnabled;
 }
 
 export async function llmJson(system, user, { maxTokens = 800 } = {}) {

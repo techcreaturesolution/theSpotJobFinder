@@ -5,7 +5,6 @@ import '../app_state.dart';
 import '../models.dart';
 import '../widgets/banner_ad.dart';
 import 'history_screen.dart';
-import 'profile_screen.dart';
 import 'search_run_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -93,12 +92,6 @@ class _SearchScreenState extends State<SearchScreen> {
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const HistoryScreen())),
-          ),
-          IconButton(
-            tooltip: 'My profile',
-            icon: const Icon(Icons.person_outline),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
           ),
           IconButton(
             tooltip: 'Logout',
@@ -202,9 +195,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  meta.dailyLimit == null
-                      ? 'A video ad plays with every search. No daily search limit.'
-                      : 'A video ad plays with every search. ${meta.searchesToday} of ${meta.dailyLimit} searches used today.',
+                  'A video ad plays with every search. Daily limit: ${meta.dailyLimit} searches.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),

@@ -5,12 +5,12 @@ import { sleep } from '../../utils/http.js';
 import { llmEnabled, llmJson } from '../agent/llm.js';
 import { categoryByKey, detectCategory } from './categories.js';
 import { detectEducation, educationByKey, educationMatches, qualifyingKeys } from './education.js';
-import { canonicalUrl, dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
+import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
 import { enrichJob, sourceStillOpen } from './enrich.js';
 import { splitLocation } from './india.js';
-import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, platformOf } from './parse.js';
-import { API_SOURCES, searchJobApis } from './apiSources.js';
-import { googleJobsQueries, jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
+import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, parseResultTitle, platformOf } from './parse.js';
+import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
+import { searchApifyLinkedIn } from './apifyLinkedIn.js';
 import { verification } from './verify.js';
 
 const DAY = 86400_000;
@@ -65,8 +65,11 @@ function normalize(raw, plan) {
   const loc = splitLocation(raw.location || raw.address);
   const city = loc.city || (plan.city && String(raw.location || '').toLowerCase().includes(plan.city.toLowerCase()) ? plan.city : '');
   const contacts = extractContacts(raw.description, highlightText);
+  const parsedTitle = parseResultTitle(raw.title);
+  const companyName = raw.companyName || parsedTitle.companyName || '';
   return {
     ...raw,
+    companyName,
     key: jobKey(raw),
     level: raw.level ?? exp.level,
     experienceText: raw.experienceText || exp.text,
@@ -83,38 +86,113 @@ function normalize(raw, plan) {
   };
 }
 
+const ROLE_STOP_WORDS = new Set([
+  'job', 'jobs', 'vacancy', 'vacancies', 'opening', 'openings', 'hiring',
+  'fresher', 'freshers', 'experienced', 'experience', 'entry', 'level',
+  'full', 'part', 'time', 'urgent', 'urgently', 'wanted', 'need', 'needed',
+  'for', 'in', 'at', 'with', 'and', 'or', 'to', 'a', 'an', 'the',
+]);
+
+const GENERIC_DESIGNATION_WORDS = new Set([
+  'developer', 'developers', 'engineer', 'engineers', 'programmer', 'programmers',
+  'executive', 'executives', 'officer', 'officers', 'specialist', 'specialists',
+  'consultant', 'consultants', 'associate', 'associates', 'analyst', 'analysts',
+  'manager', 'managers', 'lead', 'leads', 'worker', 'workers', 'staff',
+  'assistant', 'assistants', 'expert', 'experts', 'operator', 'operators',
+  'intern', 'interns', 'internship', 'trainee', 'trainees',
+]);
+
+const TECH_DOMAINS = [
+  'java', 'react', 'python', 'php', 'flutter', 'angular', 'vue', 'node', 'nodejs',
+  'android', 'ios', 'swift', 'kotlin', 'c++', 'c#', '.net', 'dotnet', 'golang',
+  'ruby', 'rails', 'mern', 'mean', 'nextjs', 'next.js', 'django', 'laravel',
+  'wordpress', 'shopify', 'salesforce', 'sap', 'devops', 'aws', 'azure',
+  'qa', 'tester', 'selenium', 'telecaller', 'tally', 'graphic', 'ui/ux', 'seo',
+  'data entry', 'content writer',
+];
+
+export function roleMatches(job, userRole) {
+  if (!userRole || !userRole.trim()) return true;
+
+  const target = userRole.toLowerCase().trim();
+  const title = String(job.title || '').toLowerCase().trim();
+  const desc = String(job.description || '').slice(0, 1500).toLowerCase();
+
+  // Find tech/domain tags present in the user search query
+  const targetTechs = TECH_DOMAINS.filter((tech) => {
+    if (tech === 'java') {
+      return /\bjava\b/i.test(target) && !/\bjavascript\b/i.test(target);
+    }
+    return new RegExp(`\\b${escapeRe(tech)}\\b`, 'i').test(target);
+  });
+
+  if (targetTechs.length > 0) {
+    // 1. Check if the job title contains the target technology
+    const titleHasTargetTech = targetTechs.some((tech) => {
+      if (tech === 'java') {
+        return /\bjava\b/i.test(title) && !/\bjavascript\b/i.test(title);
+      }
+      return new RegExp(`\\b${escapeRe(tech)}\\b`, 'i').test(title);
+    });
+
+    if (titleHasTargetTech) return true;
+
+    // 2. If title does NOT have target tech, check if it explicitly mentions a conflicting other tech
+    const titleHasConflictingTech = TECH_DOMAINS.some((otherTech) => {
+      if (targetTechs.includes(otherTech)) return false;
+      if (otherTech === 'java') {
+        return /\bjava\b/i.test(title) && !/\bjavascript\b/i.test(title);
+      }
+      return new RegExp(`\\b${escapeRe(otherTech)}\\b`, 'i').test(title);
+    });
+
+    // Conflicting tech (e.g. "React Developer" when user searched "Java developer") -> REJECT!
+    if (titleHasConflictingTech) return false;
+
+    // 3. If title is generic (e.g. "Software Engineer"), check if description mentions the target tech
+    const descHasTargetTech = targetTechs.some((tech) => {
+      if (tech === 'java') {
+        return /\bjava\b/i.test(desc) && !/\bjavascript\b/i.test(desc);
+      }
+      return new RegExp(`\\b${escapeRe(tech)}\\b`, 'i').test(desc);
+    });
+
+    return descHasTargetTech;
+  }
+
+  // Tokenize user query
+  const tokens = target
+    .replace(/[^a-z0-9+#.]+/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2 && !ROLE_STOP_WORDS.has(w));
+
+  if (!tokens.length) return true;
+
+  const nonGenericTokens = tokens.filter((w) => !GENERIC_DESIGNATION_WORDS.has(w));
+
+  if (nonGenericTokens.length > 0) {
+    const inTitle = nonGenericTokens.some((tok) => new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(title));
+    if (inTitle) return true;
+
+    const allInDesc = nonGenericTokens.every((tok) => new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(desc));
+    return allInDesc;
+  }
+
+  return tokens.some((tok) => new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(title));
+}
+
 function keep(job, plan, postedWithin) {
+  // Experience level strict check:
+  // If user searched for 'fresher', exclude jobs that explicitly require 2+ years of experience
+  const expYears = (job.experienceText || '').match(/\b([2-9]|\d{2,})\+?\s*years?\b/i);
+  if (plan.level === 'fresher' && (job.level === 'experienced' || expYears)) return false;
   if (plan.level && job.level && job.level !== plan.level) return false;
+
   if (!educationMatches(plan.education, job.education)) return false;
   if (job.validThrough && new Date(job.validThrough).getTime() < Date.now()) return false;
   if (postedWithin && job.postedAt && new Date(job.postedAt).getTime() < Date.now() - postedWithin * DAY) return false;
+  if (plan.userRole && !roleMatches(job, plan.userRole)) return false;
   return Boolean(job.title);
-}
-
-const FILLABLE = ['companyName', 'description', 'salary', 'employmentType', 'validThrough', 'postedAt', 'logo', 'location', 'state'];
-const linkKeys = (job) => [job.applyUrl, job.sourceUrl, ...(job.applyOptions || []).map((o) => o.link)].map(canonicalUrl).filter(Boolean);
-
-// Merges results from every source into one entry per job: same identity key, or any shared apply/source link.
-export function mergeSourceJobs(raw, plan, postedWithin) {
-  const fresh = new Map();
-  const byLink = new Map();
-  for (const r of raw) {
-    const job = normalize(r, plan);
-    if (!keep(job, plan, postedWithin)) continue;
-    const links = linkKeys(job);
-    const ownerKey = fresh.has(job.key) ? job.key : links.map((l) => byLink.get(l)).find(Boolean);
-    const prev = ownerKey && fresh.get(ownerKey);
-    if (prev) {
-      prev.applyOptions = uniqueLinks([...prev.applyOptions, ...job.applyOptions, ...(job.applyUrl ? [{ title: job.via || job.platform || 'Apply', link: job.applyUrl }] : [])]);
-      prev.emails = uniqueEmails([...prev.emails, ...job.emails]);
-      prev.phones = uniquePhones([...prev.phones, ...job.phones]);
-      for (const f of FILLABLE) if (!prev[f] && job[f]) prev[f] = job[f];
-    } else {
-      fresh.set(job.key, { ...job, applyOptions: job.applyOptions || [] });
-    }
-    for (const l of links) if (!byLink.has(l)) byLink.set(l, ownerKey || job.key);
-  }
-  return fresh;
 }
 
 export function dbFilter(plan, postedWithin) {
@@ -149,17 +227,18 @@ async function searchDb(plan, postedWithin) {
 const withDeadline = (promise, deadline, fallback) => Promise.race([promise, sleep(Math.max(0, deadline - Date.now())).then(() => fallback)]);
 
 const UNSTORED = new Set(['_id', 'key', 'origin', 'createdAt', 'updatedAt', 'applyClicks', 'provider', '__v']);
-const ENRICHED_FIELDS = ['education', 'educationText', 'verification', 'emails', 'phones', 'address', 'companyWebsite', 'enrichedAt', 'logo', 'salary', 'employmentType', 'experienceText', 'level', 'validThrough'];
+const ENRICHED_FIELDS = ['companyName', 'education', 'educationText', 'verification', 'emails', 'phones', 'address', 'companyWebsite', 'enrichedAt', 'logo', 'salary', 'employmentType', 'experienceText', 'level', 'validThrough'];
 
 function rank(job, plan) {
   const t = job.postedAt ? new Date(job.postedAt).getTime() : 0;
   const contact = (job.emails?.length ? 1 : 0) + (job.phones?.length ? 1 : 0) + (job.applyUrl ? 1 : 0);
   const verified = job.verification?.status === 'verified' ? 4 : 0;
   const edu = plan.education && job.education?.length ? 3 : 0;
-  return t / DAY + contact * 2 + verified + edu + (job.origin === 'portal' ? 3 : 0);
+  const titleExact = plan.userRole && roleMatches(job, plan.userRole) ? 15 : 0;
+  return t / DAY + contact * 2 + verified + edu + titleExact + (job.origin === 'portal' ? 3 : 0);
 }
 
-export async function searchJobs(input, log = () => { }) {
+export async function searchJobs(input, log = () => {}) {
   const started = Date.now();
   const deadline = started + env.jobSearchBudgetMs;
   const plan = await planJobQuery(input);
@@ -167,26 +246,45 @@ export async function searchJobs(input, log = () => { }) {
   const providers = ['portal'];
   if (available.googleJobs) providers.push('google_jobs');
   if (available.webSearch) providers.push(`web:${available.webSearch}`);
-  for (const name of Object.keys(API_SOURCES)) if (available.apis[name] && (name !== 'careerjet' || input.client)) providers.push(name);
+  if (available.linkedin) providers.push('linkedin_apify');
 
-  const [google, web, apis, db] = await Promise.allSettled([
-    withDeadline(searchGoogleJobs(googleJobsQueries(plan), 30, log), deadline - 15000, []),
+  const [google, web, linkedin, db] = await Promise.allSettled([
+    withDeadline(searchGoogleJobs(plan.q, 30), deadline - 15000, []),
     withDeadline(searchWebJobs(plan, 10, log), deadline - 15000, []),
-    withDeadline(searchJobApis(plan, { postedWithin: input.postedWithin, client: input.client }, log), deadline - 15000, []),
+    withDeadline(searchApifyLinkedIn(plan, input, log), deadline - 15000, []),
     searchDb(plan, input.postedWithin),
   ]);
   if (google.status === 'rejected') log('warn', `Google Jobs failed: ${google.reason?.message}`);
+  if (web.status === 'rejected') log('warn', `Web search failed: ${web.reason?.message}`);
+  if (linkedin.status === 'rejected') log('warn', `LinkedIn Apify failed: ${linkedin.reason?.message}`);
   if (db.status === 'rejected') log('warn', `DB search failed: ${db.reason?.message}`);
 
   const byKey = new Map();
   const recheck = new Map();
   for (const doc of db.status === 'fulfilled' ? db.value : []) {
+    if (!keep(doc, plan, input.postedWithin)) continue;
     if (doc.origin === 'portal') byKey.set(doc.key, doc);
     else recheck.set(doc.key, doc);
   }
 
-  const raw = [google, apis, web].flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-  const fresh = mergeSourceJobs(raw, plan, input.postedWithin);
+  const fresh = new Map();
+  const raw = [
+    ...(google.status === 'fulfilled' ? google.value : []),
+    ...(web.status === 'fulfilled' ? web.value : []),
+    ...(linkedin.status === 'fulfilled' ? linkedin.value : []),
+  ];
+  for (const r of raw) {
+    const job = normalize(r, plan);
+    if (!keep(job, plan, input.postedWithin)) continue;
+    const prev = fresh.get(job.key);
+    if (prev) {
+      prev.applyOptions = uniqueLinks([...prev.applyOptions, ...(job.applyOptions || [])]);
+      prev.emails = uniqueEmails([...prev.emails, ...job.emails]);
+      prev.phones = uniquePhones([...prev.phones, ...job.phones]);
+      continue;
+    }
+    fresh.set(job.key, { ...job, applyOptions: job.applyOptions || [] });
+  }
 
   const existing = fresh.size ? await JobPosting.find({ key: { $in: [...fresh.keys()] } }).lean() : [];
   const existingByKey = new Map(existing.map((d) => [d.key, d]));
@@ -239,7 +337,7 @@ export async function searchJobs(input, log = () => { }) {
       }),
     ),
   ]);
-  if (closedPortal.length) await JobPosting.updateMany({ _id: { $in: closedPortal } }, { $set: { active: false, closedAt: new Date(), 'verification.checkedAt': new Date() } });
+  if (closedPortal.length) await JobPosting.updateMany({ _id: { $in: closedPortal } }, { $set: { active: false, 'verification.checkedAt': new Date() } });
 
   const now = new Date();
   if (fresh.size) {
@@ -252,7 +350,7 @@ export async function searchJobs(input, log = () => { }) {
         fields.phones = uniquePhones(fields.phones);
         const dbOnly = recheck.has(j.key);
         if (dbOnly && !rechecked.has(j.key)) fields.verification = verification('unverified', 'not_rechecked');
-        return { updateOne: { filter: { key: j.key }, update: { $set: { ...fields, active: !j.expired, ...(j.expired ? { closedAt: now } : {}), ...(dbOnly ? {} : { lastSeenAt: now }) }, $setOnInsert: { origin: 'aggregated' } }, upsert: true } };
+        return { updateOne: { filter: { key: j.key }, update: { $set: { ...fields, active: !j.expired, ...(dbOnly ? {} : { lastSeenAt: now }) }, $setOnInsert: { origin: 'aggregated' } }, upsert: true } };
       }),
       { ordered: false },
     );
@@ -270,8 +368,9 @@ export async function searchJobs(input, log = () => { }) {
     return d.origin === 'portal' ? { ...d, verification: { ...d.verification, checkedAt: now } } : d;
   });
   const unique = dedupeJobs(current, (j) => rank(j, plan));
-  const shown = input.verifiedOnly ? unique.filter((d) => d.verification?.status === 'verified') : unique;
-  const hidden = unique.length - shown.length;
+  const strictlyMatching = unique.filter((d) => keep(d, plan, input.postedWithin));
+  const shown = input.verifiedOnly ? strictlyMatching.filter((d) => d.verification?.status === 'verified') : strictlyMatching;
+  const hidden = strictlyMatching.length - shown.length;
   const items = shown.slice(0, MAX_RESULTS).map(({ key: _key, ...d }) => d);
   return { plan, providers, items, hiddenUnverified: hidden, durationMs: Date.now() - started };
 }

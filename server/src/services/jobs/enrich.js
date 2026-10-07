@@ -3,7 +3,7 @@ import { http, isCompanyWebsite, normalizeUrl, domainOf } from '../../utils/http
 import { crawlWebsite } from '../crawler.js';
 import { categorizeEmail, extractEmails } from '../emails.js';
 import { detectEducation } from './education.js';
-import { detectExperience, extractContacts, extractJsonLdJobs, extractPhones, isJobBoardUrl, parsePostedAt } from './parse.js';
+import { detectExperience, extractContacts, extractJsonLdJobs, extractPhones, isJobBoardUrl, parsePostedAt, parseResultTitle } from './parse.js';
 import { lookupCompany } from './providers.js';
 import { uniqueEmails, uniquePhones } from './dedupe.js';
 import { agentExtract, CLOSED_RE, titleMatches, verification } from './verify.js';
@@ -115,6 +115,9 @@ export async function enrichJob(job, place) {
   }
 
   out.companyWebsite = companySiteFrom(out) || out.companyWebsite || '';
+  if (!out.companyName) {
+    out.companyName = parseResultTitle(out.title).companyName || '';
+  }
 
   if ((!out.address || !out.phones.length || !out.companyWebsite) && out.companyName) {
     try {

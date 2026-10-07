@@ -9,10 +9,10 @@ const when = (d) => (d ? new Date(d).toLocaleString() : '—');
 
 function Stat({ label, value, hint }) {
   return (
-    <div className="card">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="text-xl font-bold">{value}</div>
-      {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {hint && <div className="stat-hint">{hint}</div>}
     </div>
   );
 }

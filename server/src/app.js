@@ -5,13 +5,12 @@ import morgan from 'morgan';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
-import { requireAdmin, requireAuth, requireEmployer, requireMaster } from './middleware/auth.js';
+import { requireAdmin, requireAuth, requireMaster } from './middleware/auth.js';
 import { errorHandler, notFound } from './middleware/error.js';
 import adminRoutes from './routes/admin.js';
 import admobRoutes from './routes/admob.js';
 import adsenseRoutes, { adsTxt } from './routes/adsense.js';
 import authRoutes from './routes/auth.js';
-import employerRoutes from './routes/employer.js';
 import jobRoutes from './routes/jobs.js';
 import masterRoutes from './routes/master.js';
 
@@ -29,7 +28,6 @@ export function createApp() {
   app.use('/api/adsense', adsenseRoutes);
   app.use('/api/admob', admobRoutes);
   app.use('/api/jobs', requireAuth, jobRoutes);
-  app.use('/api/employer', requireAuth, requireEmployer, employerRoutes);
   app.use('/api/admin', requireAuth, requireAdmin, adminRoutes);
   app.use('/api/master', requireAuth, requireMaster, masterRoutes);
   app.use('/api', notFound);

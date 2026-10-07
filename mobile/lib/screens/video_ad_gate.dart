@@ -29,7 +29,7 @@ class _VideoAdGateState extends State<VideoAdGate> with WidgetsBindingObserver {
   static const _verifyWait = Duration(seconds: 30);
   _Mode _mode = _Mode.loading;
   String _message = '';
-  int _seconds = 30;
+  int _seconds = 60;
   double _watched = 0;
   bool _playing = false;
   bool _finishing = false;
@@ -76,7 +76,7 @@ class _VideoAdGateState extends State<VideoAdGate> with WidgetsBindingObserver {
       final info = await app.api.get(_endpoint);
       final gate = info['adGate'] as Map<String, dynamic>;
       if (gate['completed'] == true) return widget.onUnlocked();
-      _seconds = (gate['seconds'] as num?)?.toInt() ?? 30;
+      _seconds = (gate['seconds'] as num?)?.toInt() ?? 60;
       _watched = (gate['watchedSeconds'] as num?)?.toDouble() ?? 0;
       _demo = info['demo'] as Map<String, dynamic>?;
       final unit = AppConfig.rewardedUnit(app.admob);

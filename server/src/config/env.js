@@ -27,16 +27,6 @@ export const env = {
   serpApiKey: process.env.SERPAPI_KEY || '',
   googleCseKey: process.env.GOOGLE_CSE_KEY || '',
   googleCseCx: process.env.GOOGLE_CSE_CX || '',
-  jsearch: {
-    key: process.env.JSEARCH_API_KEY || process.env.RAPIDAPI_KEY || '',
-    host: process.env.JSEARCH_API_HOST || 'jsearch.p.rapidapi.com',
-  },
-  adzuna: { appId: process.env.ADZUNA_APP_ID || '', appKey: process.env.ADZUNA_APP_KEY || '' },
-  jooble: { key: process.env.JOOBLE_API_KEY || '', url: process.env.JOOBLE_API_URL || 'https://jooble.org/api' },
-  careerjet: {
-    key: process.env.CAREERJET_API_KEY || '',
-    referer: process.env.CAREERJET_REFERER || (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',')[0].trim(),
-  },
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   overpassUrls: list(
@@ -44,6 +34,11 @@ export const env = {
       'https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter,https://overpass.private.coffee/api/interpreter',
   ),
   enableFreeSearchFallback: bool(process.env.ENABLE_FREE_SEARCH_FALLBACK, false),
+
+  apify: {
+    token: process.env.APIFY_TOKEN || process.env.APIFY_API_KEY || '',
+    actor: process.env.APIFY_ACTOR_LINKEDIN || 'kaix/linkedin-jobs-scraper',
+  },
 
   adsense: {
     client: /^ca-pub-\d{10,20}$/.test(process.env.ADSENSE_CLIENT_ID || '') ? process.env.ADSENSE_CLIENT_ID : '',
@@ -59,7 +54,7 @@ export const env = {
 
   videoAd: {
     required: bool(process.env.VIDEO_AD_REQUIRED, true),
-    seconds: Math.min(300, Math.max(5, Number(process.env.VIDEO_AD_SECONDS || 30))),
+    seconds: Math.min(300, Math.max(5, Number(process.env.VIDEO_AD_SECONDS || 60))),
     exemptAdmins: bool(process.env.VIDEO_AD_EXEMPT_ADMINS, true),
     vastTag: /^https:\/\//.test(process.env.VIDEO_AD_VAST_TAG || '') ? process.env.VIDEO_AD_VAST_TAG : '',
     demo: bool(process.env.VIDEO_AD_DEMO, true),
@@ -76,7 +71,7 @@ export const env = {
   },
 
   crawlTimeoutMs: Number(process.env.CRAWL_TIMEOUT_MS || 10000),
-  dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 5),
+  dailyJobSearchLimit: Number(process.env.DAILY_JOB_SEARCH_LIMIT || 50),
   jobEnrichLimit: Number(process.env.JOB_ENRICH_LIMIT || 12),
   jobSearchBudgetMs: Number(process.env.JOB_SEARCH_BUDGET_MS || 40000),
 };
