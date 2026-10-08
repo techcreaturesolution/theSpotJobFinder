@@ -3,13 +3,13 @@ import { env } from '../../config/env.js';
 import { JobPosting } from '../../models/JobPosting.js';
 import { sleep } from '../../utils/http.js';
 import { llmEnabled, llmJson } from '../agent/llm.js';
-import { categoryByKey, detectCategory } from './categories.js';
+import { categoryByKey, detectCategory, matchesCategory } from './categories.js';
 import { detectEducation, educationByKey, educationMatches, qualifyingKeys } from './education.js';
 import { dedupeJobs, identityKey, uniqueEmails, uniqueLinks, uniquePhones } from './dedupe.js';
 import { enrichJob, sourceStillOpen } from './enrich.js';
-import { splitLocation } from './india.js';
+import { matchesLocation, splitLocation, stateOfCity } from './india.js';
 import { detectExperience, extractContacts, jobKey, parseJobPrompt, parsePostedAt, parseResultTitle, platformOf, stripHtml } from './parse.js';
-import { jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
+import { googleJobsQueries, jobProviders, searchGoogleJobs, searchWebJobs } from './providers.js';
 import { searchApifyLinkedIn } from './apifyLinkedIn.js';
 import { verification } from './verify.js';
 
@@ -65,9 +65,11 @@ function normalize(raw, plan) {
   const exp = detectExperience(raw.title, highlightText, cleanDesc);
   const loc = splitLocation(raw.location || raw.address);
   const city = loc.city || (plan.city && String(raw.location || '').toLowerCase().includes(plan.city.toLowerCase()) ? plan.city : '');
+  const state = loc.state || (city ? stateOfCity(city) : '') || plan.state || '';
   const contacts = extractContacts(cleanDesc, highlightText);
   const parsedTitle = parseResultTitle(raw.title);
   const companyName = raw.companyName || parsedTitle.companyName || '';
+  const detectedCat = detectCategory(`${raw.title} ${cleanDesc.slice(0, 500)}`);
   return {
     ...raw,
     description: cleanDesc,
@@ -77,10 +79,11 @@ function normalize(raw, plan) {
     experienceText: raw.experienceText || exp.text,
     education: raw.education?.length ? raw.education : detectEducation(raw.title, highlightText, cleanDesc),
     verification: raw.verification || (raw.provider === 'google_jobs' ? verification('verified', 'google_jobs') : verification('unverified', 'search_result')),
-    category: plan.category || detectCategory(`${raw.title} ${cleanDesc.slice(0, 300)}`) || '',
+    category: raw.category || detectedCat || plan.category || '',
     postedAt: raw.postedAt || parsePostedAt(raw.postedText),
     city,
-    state: loc.state || (city && city === plan.city ? plan.state : ''),
+    state,
+    companyLinkedinUrl: raw.companyLinkedinUrl,
     platform: raw.platform || platformOf(raw.applyUrl, companyName),
     applyOptions: uniqueLinks(raw.applyOptions),
     emails: uniqueEmails([...(raw.emails || []), ...contacts.emails]),
@@ -217,16 +220,79 @@ export function roleMatches(job, userRole) {
   return tokens.some((tok) => new RegExp(`\\b${escapeRe(tok)}\\b`, 'i').test(title));
 }
 
+export function getEffectiveJobDate(job) {
+  if (job.postedAt) {
+    const d = new Date(job.postedAt);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  if (job.postedText) {
+    const d = parsePostedAt(job.postedText);
+    if (d && !Number.isNaN(d.getTime())) return d;
+  }
+  if (job.createdAt) {
+    const d = new Date(job.createdAt);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
 function keep(job, plan, postedWithin) {
   // Experience level strict check:
-  // If user searched for 'fresher', exclude jobs that explicitly require 2+ years of experience
-  const expYears = (job.experienceText || '').match(/\b([2-9]|\d{2,})\+?\s*years?\b/i);
-  if (plan.level === 'fresher' && (job.level === 'experienced' || expYears)) return false;
+  // If user searched for 'fresher', exclude jobs that explicitly require 1+ or more years of experience (allow 0-1, 0-2 yrs or fresher)
+  const requiresExperience = (job.experienceText || '').match(/\b([1-9]|\d{2,})\+?\s*years?\b/i);
+  const minZero = /\b0\s*(?:-|–|to)\s*[12]\s*years?\b/i.test(job.experienceText || '');
+  if (plan.level === 'fresher') {
+    if (job.level === 'experienced') return false;
+    if (requiresExperience && !minZero) return false;
+  }
   if (plan.level && job.level && job.level !== plan.level) return false;
 
+  // Education strict check:
   if (!educationMatches(plan.education, job.education)) return false;
   if (job.validThrough && new Date(job.validThrough).getTime() < Date.now()) return false;
-  if (postedWithin && job.postedAt && new Date(job.postedAt).getTime() < Date.now() - postedWithin * DAY) return false;
+
+  // Location strict check (City & State):
+  if (!matchesLocation(job, plan)) return false;
+
+  // Category strict check:
+  if (!matchesCategory(job, plan.category)) return false;
+
+  // Strict Posted Within (date range) check:
+  if (postedWithin && postedWithin > 0) {
+    const postDate = getEffectiveJobDate(job);
+    const textAge = String(job.postedText || '').toLowerCase().trim();
+
+    // 1. Text-based relative age filtering
+    if (textAge) {
+      if (/years?\s*ago|\b\d+\s*y\s*ago/i.test(textAge)) return false;
+
+      const monthsMatch = textAge.match(/(\d+)\+?\s*(?:months?|mo)\s*ago/i);
+      if (monthsMatch) {
+        const m = Number(monthsMatch[1]);
+        if (m * 30 > postedWithin + (postedWithin >= 30 ? 2 : 0)) return false;
+      }
+
+      const weeksMatch = textAge.match(/(\d+)\+?\s*(?:weeks?|w)\s*ago/i);
+      if (weeksMatch) {
+        const w = Number(weeksMatch[1]);
+        if (w * 7 > postedWithin + (postedWithin >= 7 ? 1 : 0)) return false;
+      }
+
+      const daysMatch = textAge.match(/(\d+)\+?\s*(?:days?|d)\s*ago/i);
+      if (daysMatch) {
+        const d = Number(daysMatch[1]);
+        if (d > postedWithin + (postedWithin === 1 ? 0.5 : 0)) return false;
+      }
+    }
+
+    // 2. Parsed Date timestamp check with boundary margin
+    if (postDate) {
+      const bufferDays = postedWithin === 1 ? 0.5 : postedWithin <= 7 ? 0.5 : 2;
+      const cutoff = Date.now() - (postedWithin + bufferDays) * DAY;
+      if (postDate.getTime() < cutoff) return false;
+    }
+  }
+
   if (plan.userRole && !roleMatches(job, plan.userRole)) return false;
   return Boolean(job.title);
 }
@@ -243,8 +309,9 @@ export function dbFilter(plan, postedWithin) {
   const locRe = (v) => new RegExp(`\\b${escapeRe(v)}\\b`, 'i');
   if (plan.city) and.push({ $or: [{ city: locRe(plan.city) }, { location: locRe(plan.city) }, { address: locRe(plan.city) }] });
   else if (plan.state) and.push({ $or: [{ state: locRe(plan.state) }, { location: locRe(plan.state) }, { address: locRe(plan.state) }] });
-  if (postedWithin) {
-    const since = new Date(Date.now() - postedWithin * DAY);
+  if (postedWithin && postedWithin > 0) {
+    const bufferDays = postedWithin === 1 ? 0.5 : postedWithin <= 7 ? 0.5 : 2;
+    const since = new Date(Date.now() - (postedWithin + bufferDays) * DAY);
     and.push({ $or: [{ postedAt: { $gte: since } }, { postedAt: null, createdAt: { $gte: since } }] });
   }
   const filter = { $and: and };
@@ -263,7 +330,7 @@ async function searchDb(plan, postedWithin) {
 const withDeadline = (promise, deadline, fallback) => Promise.race([promise, sleep(Math.max(0, deadline - Date.now())).then(() => fallback)]);
 
 const UNSTORED = new Set(['_id', 'key', 'origin', 'createdAt', 'updatedAt', 'applyClicks', 'provider', '__v']);
-const ENRICHED_FIELDS = ['companyName', 'education', 'educationText', 'verification', 'emails', 'phones', 'address', 'companyWebsite', 'enrichedAt', 'logo', 'salary', 'employmentType', 'experienceText', 'level', 'validThrough'];
+const ENRICHED_FIELDS = ['companyName', 'education', 'educationText', 'verification', 'emails', 'phones', 'address', 'companyWebsite', 'companyLinkedinUrl', 'enrichedAt', 'logo', 'salary', 'employmentType', 'experienceText', 'level', 'validThrough'];
 
 function rank(job, plan) {
   const t = job.postedAt ? new Date(job.postedAt).getTime() : 0;
@@ -285,9 +352,13 @@ export async function searchJobs(input, log = () => {}) {
   if (available.linkedin) providers.push('linkedin_apify');
 
   const [google, web, linkedin, db] = await Promise.allSettled([
-    withDeadline(searchGoogleJobs(plan.q, 30), deadline - 15000, []),
+    withDeadline(
+      searchGoogleJobs(googleJobsQueries(plan), 30, { place: plan.place, postedWithin: input.postedWithin, log }),
+      deadline - 15000,
+      [],
+    ),
     withDeadline(searchWebJobs(plan, 10, log), deadline - 15000, []),
-    withDeadline(searchApifyLinkedIn(plan, input, log), deadline - 15000, []),
+    withDeadline(searchApifyLinkedIn(plan, input, log), deadline - 10000, []),
     searchDb(plan, input.postedWithin),
   ]);
   if (google.status === 'rejected') log('warn', `Google Jobs failed: ${google.reason?.message}`);
@@ -340,8 +411,13 @@ export async function searchJobs(input, log = () => {}) {
     fresh.set(key, { ...job, verification: verification('unverified', 'search_result') });
   }
 
-  const unverifiedFirst = (a, b) => Number(a.verification?.status === 'verified') - Number(b.verification?.status === 'verified');
-  const toEnrich = [...fresh.values()].sort(unverifiedFirst).slice(0, env.jobEnrichLimit);
+  const prioritizeEnrich = (a, b) => {
+    const aMissing = !a.companyWebsite ? 1 : 0;
+    const bMissing = !b.companyWebsite ? 1 : 0;
+    if (aMissing !== bMissing) return bMissing - aMissing;
+    return Number(a.verification?.status === 'verified') - Number(b.verification?.status === 'verified');
+  };
+  const toEnrich = [...fresh.values()].sort(prioritizeEnrich).slice(0, env.jobEnrichLimit);
   const limit = pLimit(4);
   const expired = new Set();
   const rechecked = new Set();
@@ -400,8 +476,9 @@ export async function searchJobs(input, log = () => {}) {
   const portalIds = docs.filter((d) => d.origin === 'portal').map((d) => d._id);
   if (portalIds.length) await JobPosting.updateMany({ _id: { $in: portalIds } }, { $set: { 'verification.checkedAt': now } });
   const current = docs.map((d) => {
-    if (!confirmed(d)) return { ...d, verification: verification('unverified', 'not_rechecked') };
-    return d.origin === 'portal' ? { ...d, verification: { ...d.verification, checkedAt: now } } : d;
+    const cleanJob = { ...d, description: stripHtml(d.description || '') };
+    if (!confirmed(d)) return { ...cleanJob, verification: verification('unverified', 'not_rechecked') };
+    return d.origin === 'portal' ? { ...cleanJob, verification: { ...cleanJob.verification, checkedAt: now } } : cleanJob;
   });
   const unique = dedupeJobs(current, (j) => rank(j, plan));
   const strictlyMatching = unique.filter((d) => keep(d, plan, input.postedWithin));

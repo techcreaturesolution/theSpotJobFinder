@@ -13,39 +13,124 @@ export function jobProviders() {
   };
 }
 
-export async function searchGoogleJobs(q, num = 20) {
+export function googleJobsQueries(plan) {
+  if (!plan) return [];
+  const r = plan.role || plan.userRole || 'jobs';
+  const place = plan.place || 'India';
+  const levelWord = plan.levelWord || '';
+  return [...new Set([
+    plan.q,
+    `${r} jobs in ${place}`,
+    levelWord ? `${r} ${levelWord} hiring ${place}` : `${r} vacancy ${place}`,
+  ].map((x) => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean))];
+}
+
+export async function searchGoogleJobs(qOrQueries, num = 20, optsOrLog = {}) {
   if (!env.serpApiKey) return [];
+  const options = typeof optsOrLog === 'function' ? {} : (optsOrLog || {});
+  const log = typeof optsOrLog === 'function' ? optsOrLog : (options.log || (() => {}));
+  const list = [].concat(qOrQueries).filter(Boolean);
+  if (!list.length) return [];
+
+  const location = options.place && options.place !== 'India' ? `${options.place}, India` : 'India';
+
+  let chips;
+  if (options.postedWithin === 1) chips = 'date_posted:today';
+  else if (options.postedWithin === 3) chips = 'date_posted:3days';
+  else if (options.postedWithin === 7) chips = 'date_posted:week';
+  else if (options.postedWithin === 30) chips = 'date_posted:month';
+
   const out = [];
-  let token;
-  for (let page = 0; page < Math.ceil(Math.min(num, 30) / 10); page += 1) {
-    const { data } = await http.get('https://serpapi.com/search.json', {
-      params: { engine: 'google_jobs', q, location: 'India', gl: 'in', hl: 'en', api_key: env.serpApiKey, ...(token ? { next_page_token: token } : {}) },
-      timeout: 30000,
-    });
-    for (const r of data.jobs_results || []) {
-      const ext = r.detected_extensions || {};
-      const via = String(r.via || '').replace(/^via\s+/i, '');
-      out.push({
-        title: r.title,
-        companyName: r.company_name || '',
-        location: r.location || '',
-        via,
-        platform: platformOf(r.apply_options?.[0]?.link) || platformOf(via),
-        description: r.description || '',
-        highlights: (r.job_highlights || []).map((h) => ({ title: h.title, items: h.items || [] })),
-        applyOptions: (r.apply_options || []).filter((o) => o.link).map((o) => ({ title: o.title, link: o.link })),
-        applyUrl: r.apply_options?.[0]?.link || r.share_link,
-        sourceUrl: r.share_link,
-        logo: r.thumbnail,
-        postedText: ext.posted_at || '',
-        employmentType: ext.schedule_type || '',
-        salary: ext.salary || '',
-        workFromHome: Boolean(ext.work_from_home),
-        provider: 'google_jobs',
-      });
+  const seenUrls = new Set();
+
+  for (const q of list) {
+    let currentChips = chips;
+    let token;
+    for (let page = 0; page < Math.ceil(Math.min(num, 30) / 10); page += 1) {
+      try {
+        const params = {
+          engine: 'google_jobs',
+          q,
+          location,
+          gl: 'in',
+          hl: 'en',
+          api_key: env.serpApiKey,
+          ...(token ? { next_page_token: token } : {}),
+          ...(currentChips ? { chips: currentChips } : {}),
+        };
+        const { data } = await http.get('https://serpapi.com/search.json', {
+          params,
+          timeout: 30000,
+        });
+        const results = data.jobs_results || [];
+        if (currentChips && page === 0 && results.length === 0) {
+          // If query with chips yielded 0 results, retry without chips to ensure jobs are found
+          currentChips = undefined;
+          continue;
+        }
+        for (const r of results) {
+          const ext = r.detected_extensions || {};
+          const extPosted =
+            ext.posted_at ||
+            (r.extensions || []).find((e) =>
+              /\b(\d+|an?|one)\+?\s*(h|d|w|mo|m|min|minute|hour|hr|day|week|month|year)s?\s*(?:ago|earlier|back)?\b/i.test(e) ||
+              /\b(today|yesterday|just (?:now|posted)|active)\b/i.test(e),
+            ) ||
+            '';
+          const via = String(r.via || '').replace(/^via\s+/i, '');
+          const applyOptions = (r.apply_options || []).filter((o) => o.link).map((o) => ({ title: o.title, link: o.link }));
+
+          // Detect if job is from LinkedIn
+          const linkedInOpt = applyOptions.find((o) => /linkedin\.com/i.test(o.link) || /linkedin/i.test(o.title));
+          const isLinkedIn = /linkedin/i.test(via) || Boolean(linkedInOpt);
+
+          // Find primary applyUrl
+          let applyUrl = applyOptions[0]?.link || r.share_link;
+          if (isLinkedIn && linkedInOpt?.link) {
+            applyUrl = linkedInOpt.link;
+          }
+
+          if (applyUrl && seenUrls.has(applyUrl)) continue;
+          if (applyUrl) seenUrls.add(applyUrl);
+
+          const platform = isLinkedIn ? 'LinkedIn' : platformOf(applyUrl) || platformOf(via);
+
+          const relatedCompanyWebsite = (r.related_links || []).find((l) => /website|homepage|official/i.test(l.text || '') && !/linkedin/i.test(l.link || ''))?.link;
+          const relatedCompanyLinkedin = (r.related_links || []).find((l) => /linkedin\.com\/company/i.test(l.link || ''))?.link;
+
+          out.push({
+            title: r.title,
+            companyName: r.company_name || '',
+            companyWebsite: relatedCompanyWebsite || undefined,
+            companyLinkedinUrl: relatedCompanyLinkedin || undefined,
+            location: r.location || '',
+            via,
+            platform,
+            description: r.description || '',
+            highlights: (r.job_highlights || []).map((h) => ({ title: h.title, items: h.items || [] })),
+            applyOptions,
+            applyUrl,
+            sourceUrl: r.share_link,
+            logo: r.thumbnail,
+            postedText: extPosted,
+            employmentType: ext.schedule_type || '',
+            salary: ext.salary || '',
+            workFromHome: Boolean(ext.work_from_home),
+            provider: 'google_jobs',
+          });
+        }
+        token = data.serpapi_pagination?.next_page_token;
+        if (!token || out.length >= num) break;
+      } catch (err) {
+        log('warn', `Google Jobs query failed: ${err.message}`);
+        if (currentChips && page === 0) {
+          currentChips = undefined;
+          continue;
+        }
+        break;
+      }
     }
-    token = data.serpapi_pagination?.next_page_token;
-    if (!token || out.length >= num) break;
+    if (out.length >= num) break;
   }
   return out;
 }
@@ -90,6 +175,7 @@ export async function searchWebJobs(params, perQuery = 10, log = () => {}) {
         applyUrl: row.link,
         applyOptions: [{ title: platform, link: row.link }],
         sourceUrl: row.link,
+        postedText: row.date || '',
         provider: `web_${kind}`,
       });
     }

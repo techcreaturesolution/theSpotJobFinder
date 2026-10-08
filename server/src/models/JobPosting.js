@@ -12,6 +12,7 @@ const jobPostingSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     companyName: { type: String, trim: true, default: '' },
     companyWebsite: String,
+    companyLinkedinUrl: String,
     logo: String,
     category: { type: String, index: true },
     level: { type: String, enum: [...JOB_LEVELS, null], default: null, index: true },

@@ -4,54 +4,27 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Pinterest Palette: Cocoa Elegance (https://pin.it/uSIA19VFw)
-        // #2A0800 - Deep chocolate
-        // #775144 - Warm chocolate brown
-        // #C09891 - Soft mocha
-        // #BEA8A7 - Muted blush / greige
-        // #F4DBD8 - Soft blush cream
-        cocoa: {
-          950: '#180400',
-          900: '#2A0800',
-          800: '#482017',
-          700: '#5F382E',
-          600: '#775144',
-          500: '#9C7467',
-          400: '#C09891',
-          300: '#BEA8A7',
-          200: '#DBCECD',
-          100: '#EBDCDA',
-          50: '#F4DBD8',
+        brand: {
+          bg: '#f8f9ff',
+          surface: '#ffffff',
+          dark: '#0b1c30',
+          primary: '#3730a3',
+          secondary: '#2563eb',
+          accent: '#39b8fd',
+          border: '#e0e7ff',
+          muted: '#eef2ff',
         },
-        blue: {
-          50: '#F4DBD8',
-          100: '#EBDCDA',
-          200: '#DBCECD',
-          300: '#BEA8A7',
-          400: '#C09891',
-          500: '#9C7467',
-          600: '#8A6053',
-          700: '#775144',
-          800: '#482017',
-          900: '#2A0800',
-          950: '#180400',
-        },
-        slate: {
-          50: '#FAF5F4',
-          100: '#F4DBD8',
-          200: '#E5D3D1',
-          300: '#BEA8A7',
-          400: '#A68E8C',
-          500: '#775144',
-          600: '#5C3830',
-          700: '#482017',
-          800: '#34140D',
-          900: '#2A0800',
-          950: '#180400',
-        },
-        indigo: {
-          100: '#EBDCDA',
-          800: '#5F382E',
+        primary: {
+          50: '#eef2ff',
+          100: '#e0e7ff',
+          200: '#c7d2fe',
+          300: '#a5b4fc',
+          400: '#818cf8',
+          500: '#6366f1',
+          600: '#3730a3',
+          700: '#2e288a',
+          800: '#1e1b4b',
+          900: '#0b1c30',
         },
       },
     },

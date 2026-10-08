@@ -40,3 +40,23 @@ export function detectCategory(text) {
   }
   return best;
 }
+
+export function matchesCategory(job, planCategory) {
+  if (!planCategory) return true;
+  const cat = categoryByKey(planCategory);
+  if (!cat) return true;
+
+  const text = ` ${String(job.title || '')} ${String(job.description || '').slice(0, 1500)} `.toLowerCase();
+  const detected = detectCategory(text);
+  if (detected === planCategory) return true;
+
+  // Check if job matches any of the category's keywords
+  const hasKeyword = cat.keywords.some((kw) => text.includes(kw.toLowerCase()));
+  if (hasKeyword) return true;
+
+  // If detected category is completely different and no keywords matched, exclude
+  if (detected && detected !== planCategory) return false;
+
+  return false;
+}
+

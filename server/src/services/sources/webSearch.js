@@ -7,7 +7,7 @@ async function serpApi(query, num) {
     params: { engine: 'google', q: query, num: Math.min(num, 100), api_key: env.serpApiKey, hl: 'en' },
     timeout: 30000,
   });
-  return (data.organic_results || []).map((r) => ({ title: r.title, link: r.link, snippet: r.snippet || '' }));
+  return (data.organic_results || []).map((r) => ({ title: r.title, link: r.link, snippet: r.snippet || '', date: r.date || '' }));
 }
 
 async function googleCse(query, num) {

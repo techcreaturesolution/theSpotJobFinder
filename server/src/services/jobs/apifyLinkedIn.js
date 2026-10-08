@@ -74,13 +74,18 @@ export function isIndiaJob(job) {
  * Maps postedWithin in days to Apify LinkedIn scraper datePosted filter
  */
 export function mapDatePosted(postedWithin) {
-  if (!postedWithin) return undefined;
-  if (typeof postedWithin === 'string') return postedWithin;
+  if (!postedWithin || postedWithin === 0) return undefined;
+  if (typeof postedWithin === 'string') {
+    if (postedWithin === 'past-24h' || postedWithin === '24h') return 'r86400';
+    if (postedWithin === 'past-week' || postedWithin === 'week') return 'r604800';
+    if (postedWithin === 'past-month' || postedWithin === 'month') return 'r2592000';
+    return postedWithin;
+  }
   const days = Number(postedWithin);
-  if (Number.isNaN(days)) return undefined;
-  if (days <= 1) return 'past-24h';
-  if (days <= 7) return 'past-week';
-  return 'past-month';
+  if (Number.isNaN(days) || days <= 0) return undefined;
+  if (days <= 1) return 'r86400';
+  if (days <= 7) return 'r604800';
+  return 'r2592000';
 }
 
 /**
@@ -121,10 +126,22 @@ export function mapApifyLinkedInJob(raw) {
   const rawPostedAt = raw.postedAt || raw.postedDate || raw.postedTime || raw.date;
   const postedAt = rawPostedAt ? (new Date(rawPostedAt).getTime() ? new Date(rawPostedAt) : parsePostedAt(rawPostedAt)) : null;
 
+  const companyLinkedinUrl =
+    raw.companyLinkedinUrl ||
+    raw.companyDetails?.linkedinUrl ||
+    (typeof raw.companyUrl === 'string' && raw.companyUrl.includes('linkedin.com') ? raw.companyUrl : undefined) ||
+    (typeof raw.company === 'string' && raw.company.includes('linkedin.com') ? raw.company : undefined);
+
+  const companyWebsite =
+    raw.companyWebsite ||
+    raw.companyDetails?.website ||
+    (typeof raw.companyUrl === 'string' && !raw.companyUrl.includes('linkedin.com') ? raw.companyUrl : undefined);
+
   return {
     title,
     companyName,
-    companyWebsite: raw.companyWebsite || raw.companyLinkedinUrl || undefined,
+    companyWebsite,
+    companyLinkedinUrl,
     logo: raw.companyLogo || raw.logo || raw.company_logo || undefined,
     location,
     city: loc.city || '',
@@ -203,7 +220,31 @@ export async function scrapeLinkedInJobs({
     timeout: timeout + 5000,
   });
 
-  const items = Array.isArray(data) ? data : [];
+  let items = Array.isArray(data) ? data : [];
+
+  // Fallback: if actor returned 0 results with date filter, retry without datePosted
+  // and allow backend keep() to strictly filter the posting dates.
+  if (items.length === 0 && payload.datePosted) {
+    try {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.datePosted;
+      const res = await axios.post(url, fallbackPayload, {
+        params: {
+          token,
+          timeout: Math.round(timeout / 1000),
+        },
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: timeout + 5000,
+      });
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        items = res.data;
+      }
+    } catch {
+      /* fallback ignored */
+    }
+  }
 
   // Map to Job schema and strictly filter to only keep India jobs
   return items
@@ -222,7 +263,7 @@ export async function searchApifyLinkedIn(plan, options = {}, log = () => {}) {
     return [];
   }
 
-  const keywords = [plan.userRole || plan.role, plan.eduWord, plan.levelWord].filter(Boolean).join(' ').trim() || plan.q || 'jobs';
+  const keywords = [plan.userRole || plan.role, plan.levelWord === 'fresher' ? 'fresher' : ''].filter(Boolean).join(' ').trim() || plan.role || plan.q || 'jobs';
   const targetLocation = ensureIndiaLocation(plan.city || plan.state || plan.place || 'India');
   const datePosted = mapDatePosted(options.postedWithin);
 

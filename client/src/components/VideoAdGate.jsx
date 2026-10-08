@@ -134,7 +134,7 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
     setFinishing(false);
   }, [send, endpoint, onUnlocked]);
 
-  const seconds = info?.seconds || 60;
+  const seconds = info?.seconds || 30;
 
   useEffect(() => {
     if (!playing) return;
@@ -165,7 +165,7 @@ export default function VideoAdGate({ endpoint, onUnlocked, message = 'Your job 
 
   const left = Math.max(0, Math.ceil(seconds - watched));
   const pct = Math.min(100, (watched / seconds) * 100);
-  const houseSrc = mode === 'house' ? info?.demo?.videoUrl : undefined;
+  const houseSrc = mode === 'house' && info?.demo?.videoUrl ? `${info.demo.videoUrl}${info.demo.videoUrl.includes('?') ? '' : '?v=30'}` : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4" role="dialog" aria-modal="true" aria-label="Sponsored video">

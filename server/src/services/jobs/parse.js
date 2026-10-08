@@ -133,13 +133,45 @@ export function parsePostedAt(value, now = new Date()) {
     const d = new Date(s);
     return Number.isNaN(d.getTime()) ? null : d;
   }
-  if (/just (now|posted)|today|few (seconds|minutes)|active/.test(s)) return new Date(now);
-  if (/yesterday/.test(s)) return new Date(now.getTime() - 86400_000);
-  const m = s.match(/(\d+|an?|one)\+?\s*(minute|min|hour|hr|day|week|month|year)s?\s*ago/);
-  if (!m) return null;
-  const n = /^\d+$/.test(m[1]) ? Number(m[1]) : 1;
-  const unit = { minute: 60e3, min: 60e3, hour: 3600e3, hr: 3600e3, day: 86400e3, week: 7 * 86400e3, month: 30 * 86400e3, year: 365 * 86400e3 }[m[2]];
-  return new Date(now.getTime() - n * unit);
+  if (/just (now|posted)|today|few (seconds|minutes)|moments? ago|active today/.test(s)) return new Date(now);
+  if (/yesterday|active yesterday/.test(s)) return new Date(now.getTime() - 86400_000);
+
+  // Short relative forms: 2d ago, 5h ago, 1w ago, 2mo ago, 15m ago, 1y ago
+  const shortMatch = s.match(/(\d+)\+?\s*(m|min|h|hr|d|w|mo|y)\s*ago/);
+  if (shortMatch) {
+    const n = Number(shortMatch[1]);
+    const unitMap = {
+      m: 60e3,
+      min: 60e3,
+      h: 3600e3,
+      hr: 3600e3,
+      d: 86400e3,
+      w: 7 * 86400e3,
+      mo: 30 * 86400e3,
+      y: 365 * 86400e3,
+    };
+    const unit = unitMap[shortMatch[2]];
+    if (unit) return new Date(now.getTime() - n * unit);
+  }
+
+  // Standard relative forms: "4 days ago", "an hour ago", "30+ days ago", "posted 2 days ago"
+  const m = s.match(/(\d+|an?|one)\+?\s*(minute|min|hour|hr|day|week|month|year)s?\s*(?:ago|earlier|back)?/);
+  if (m) {
+    const isAgoOrPosted = /\b(ago|earlier|back|posted|active)\b/.test(s) || /^\s*(\d+|an?|one)\+?\s*(minute|min|hour|hr|day|week|month|year)s?\s*$/.test(s);
+    if (isAgoOrPosted) {
+      const n = /^\d+$/.test(m[1]) ? Number(m[1]) : 1;
+      const unit = { minute: 60e3, min: 60e3, hour: 3600e3, hr: 3600e3, day: 86400e3, week: 7 * 86400e3, month: 30 * 86400e3, year: 365 * 86400e3 }[m[2]];
+      return new Date(now.getTime() - n * unit);
+    }
+  }
+
+  // Common textual dates: "5 Oct 2026", "October 5, 2026"
+  if (/^[a-z]{3,9}\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}/i.test(s) || /^\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3,9},?\s+\d{4}/i.test(s)) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  return null;
 }
 
 const PHONE_RE = /(?:\+91[\s-]?|\b0)?\b[6-9](?:\d{9}|\d{4}[\s-]\d{5}|\d{2}[\s-]\d{3}[\s-]\d{4})\b|\b0\d{2,4}[\s-]\d{6,8}\b/g;
@@ -188,7 +220,9 @@ export function parseJobPrompt(prompt) {
 
 export function stripHtml(html) {
   if (!html) return '';
-  const withBreaks = String(html)
+  const cleaned = String(html)
+    .replace(/<span[^>]*class=["'][^"']*ql-ui[^"']*["'][^>]*>[\s\S]*?<\/span>/gi, '');
+  const withBreaks = cleaned
     .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\/(p|li|div|h[1-6]|tr)>/gi, '\n')
     .replace(/<li[^>]*>/gi, '• ');

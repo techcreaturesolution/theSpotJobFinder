@@ -5,7 +5,7 @@ import { HttpError } from '../utils/httpError.js';
 export const AD_EVENTS = ['play', 'tick', 'pause', 'complete'];
 const BEAT_CREDIT_MS = 3000;
 
-const DEMO_VIDEO = { title: 'Demo video ad', videoUrl: '/demo-video-ad.mp4', demo: true };
+const DEMO_VIDEO = { title: 'Demo video ad', videoUrl: '/demo-video-ad.mp4?v=30', demo: true };
 
 export function newAdGate(user) {
   const { required, seconds, exemptAdmins } = env.videoAd;
@@ -13,12 +13,18 @@ export function newAdGate(user) {
 }
 
 export function adGateInfo(doc) {
+  if (doc?.adGate && env.videoAd.seconds && (!doc.adGate.seconds || doc.adGate.seconds > env.videoAd.seconds)) {
+    doc.adGate.seconds = env.videoAd.seconds;
+  }
   if (!isAdLocked(doc)) return { adGate: publicAdGate(doc), vastTag: null, demo: null };
   return { adGate: publicAdGate(doc), vastTag: env.videoAd.vastTag || null, demo: env.videoAd.demo ? DEMO_VIDEO : null };
 }
 
 export async function recordAdEvent(doc, event) {
   const g = doc.adGate;
+  if (g && env.videoAd.seconds && (!g.seconds || g.seconds > env.videoAd.seconds)) {
+    g.seconds = env.videoAd.seconds;
+  }
   if (!isAdLocked(doc)) return publicAdGate(doc);
   const now = new Date();
   const credit = () => {

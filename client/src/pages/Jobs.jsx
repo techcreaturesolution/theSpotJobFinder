@@ -32,7 +32,7 @@ export default function Jobs() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [filter, setFilter] = useState({ text: '', platform: '', contact: false });
+  const [filter, setFilter] = useState({ text: '', platform: '', contact: false, postedWithin: 0, sortBy: 'newest' });
 
   const loadHistory = () =>
     api
@@ -80,6 +80,9 @@ export default function Jobs() {
       if (k === 'city' && v && !f.state) next.state = stateOfCity(v);
       return next;
     });
+    if (k === 'postedWithin') {
+      setFilter((prev) => ({ ...prev, postedWithin: Number(v) }));
+    }
   };
 
   const submit = async (e) => {
@@ -92,7 +95,7 @@ export default function Jobs() {
     setSubmitting(true);
     try {
       const { data } = await api.post('/jobs/search', form);
-      setFilter({ text: '', platform: '', contact: false });
+      setFilter({ text: '', platform: '', contact: false, postedWithin: Number(form.postedWithin || 0), sortBy: 'newest' });
       setCurrent({ search: data.search, items: [] });
       setActiveId(data.search._id);
     } catch (err) {
@@ -103,9 +106,21 @@ export default function Jobs() {
   };
 
   const openSearch = (s) => {
-    setFilter({ text: '', platform: '', contact: false });
+    const postedVal = Number(s.postedWithin ?? 30);
+    setFilter({ text: '', platform: '', contact: false, postedWithin: postedVal, sortBy: 'newest' });
     setCurrent(null);
     setActiveId(s._id);
+    setForm({
+      ...EMPTY_FORM,
+      level: s.level || 'fresher',
+      prompt: s.prompt || s.query || '',
+      category: s.category || '',
+      education: s.education || '',
+      state: s.state || '',
+      city: s.city || '',
+      postedWithin: postedVal,
+      verifiedOnly: Boolean(s.verifiedOnly),
+    });
     if (s._id === activeId) setRefreshTick((n) => n + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -126,12 +141,61 @@ export default function Jobs() {
   const items = useMemo(() => {
     if (!result) return [];
     const t = filter.text.trim().toLowerCase();
-    return result.items.filter(
-      (j) =>
-        (!filter.platform || j.platform === filter.platform) &&
-        (!filter.contact || j.emails?.length || j.phones?.length) &&
-        (!t || `${j.title} ${j.companyName} ${j.location} ${j.description}`.toLowerCase().includes(t)),
-    );
+    const DAY = 86400_000;
+    const now = Date.now();
+
+    const filtered = result.items.filter((j) => {
+      if (filter.platform && j.platform !== filter.platform) return false;
+      if (filter.contact && !j.emails?.length && !j.phones?.length) return false;
+      if (t && !`${j.title} ${j.companyName} ${j.location} ${j.description}`.toLowerCase().includes(t)) return false;
+
+      // Date-wise filter
+      if (filter.postedWithin > 0) {
+        let postTime = null;
+        if (j.postedAt) {
+          const d = new Date(j.postedAt);
+          if (!Number.isNaN(d.getTime())) postTime = d.getTime();
+        }
+        const text = String(j.postedText || '').toLowerCase().trim();
+        if (!postTime && text) {
+          const m = text.match(/(\d+)\+?\s*(?:(d|days?)|(w|weeks?)|(mo|months?)|(h|hours?))\s*ago/);
+          if (m) {
+            const num = Number(m[1]);
+            const unit = m[2] ? DAY : m[3] ? 7 * DAY : m[4] ? 30 * DAY : 3600_000;
+            postTime = now - num * unit;
+          } else if (/today|just (?:now|posted)/.test(text)) {
+            postTime = now;
+          } else if (/yesterday/.test(text)) {
+            postTime = now - DAY;
+          }
+        }
+
+        if (postTime) {
+          const bufferDays = filter.postedWithin === 1 ? 0.5 : filter.postedWithin <= 7 ? 0.5 : 2;
+          const cutoff = now - (filter.postedWithin + bufferDays) * DAY;
+          if (postTime < cutoff) return false;
+        } else if (text) {
+          const dMatch = text.match(/(\d+)\+?\s*(?:days?|d)\s*ago/);
+          if (dMatch && Number(dMatch[1]) > filter.postedWithin + (filter.postedWithin === 1 ? 0.5 : 0)) return false;
+          const wMatch = text.match(/(\d+)\+?\s*(?:weeks?|w)\s*ago/);
+          if (wMatch && Number(wMatch[1]) * 7 > filter.postedWithin) return false;
+          const mMatch = text.match(/(\d+)\+?\s*(?:months?|mo)\s*ago/);
+          if (mMatch && Number(mMatch[1]) * 30 > filter.postedWithin) return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (filter.sortBy === 'newest') {
+      return [...filtered].sort((a, b) => {
+        const timeA = a.postedAt ? new Date(a.postedAt).getTime() : 0;
+        const timeB = b.postedAt ? new Date(b.postedAt).getTime() : 0;
+        return timeB - timeA;
+      });
+    }
+
+    return filtered;
   }, [result, filter]);
   const platforms = useMemo(() => [...new Set((result?.items || []).map((j) => j.platform).filter(Boolean))].sort(), [result]);
 
@@ -150,14 +214,14 @@ export default function Jobs() {
             ['fresher', 'I am a Fresher'],
             ['experienced', 'I am Experienced'],
           ].map(([k, l]) => (
-            <label key={k} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${form.level === k ? 'border-[#775144] bg-[#775144] text-white shadow-sm font-semibold' : 'border-[#E5D3D1] bg-white text-[#775144] hover:bg-[#FAF5F4] hover:border-[#BEA8A7]'}`}>
+            <label key={k} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${form.level === k ? 'border-[#3730a3] bg-gradient-to-r from-[#3730a3] to-[#2563eb] text-white shadow-sm font-semibold' : 'border-[#e0e7ff] bg-white text-slate-700 hover:bg-[#eef2ff] hover:text-[#3730a3] hover:border-[#c7d2fe]'}`}>
               <input type="radio" name="level" value={k} checked={form.level === k} onChange={set('level')} className="sr-only" />
               {l}
             </label>
           ))}
         </div>
         <div>
-          <label htmlFor="job-prompt" className="text-sm font-medium text-[#2A0800]">
+          <label htmlFor="job-prompt" className="text-sm font-medium text-[#0b1c30]">
             What job are you looking for?
           </label>
           <textarea
@@ -171,7 +235,7 @@ export default function Jobs() {
           />
           <div className="mt-1 flex flex-wrap gap-1">
             {EXAMPLES[form.level].map((x) => (
-              <button key={x} type="button" className="badge border border-[#E5D3D1] bg-[#FAF5F4] text-[#775144] transition hover:bg-[#F4DBD8] hover:text-[#2A0800]" onClick={() => setForm((f) => ({ ...f, prompt: x }))}>
+              <button key={x} type="button" className="badge border border-[#e0e7ff] bg-[#f8f9ff] text-[#3730a3] transition hover:bg-[#eef2ff] hover:text-[#1e1b4b] hover:border-[#c7d2fe]" onClick={() => setForm((f) => ({ ...f, prompt: x }))}>
                 {x}
               </button>
             ))}
@@ -230,7 +294,7 @@ export default function Jobs() {
           </label>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-sm text-[#F4DBD8]">
+          <label className="flex items-center gap-2 text-sm text-slate-700 font-medium">
             <input type="checkbox" checked={form.verifiedOnly} onChange={set('verifiedOnly')} />
             Show only verified jobs (confirmed on the original posting)
           </label>
@@ -239,7 +303,7 @@ export default function Jobs() {
           </button>
         </div>
         {meta && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-[#775144]">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span>Sources:</span>
             {['portal', ...(meta.providers.googleJobs ? ['google_jobs'] : []), ...(meta.providers.linkedin ? ['linkedin'] : []), ...(meta.providers.webSearch ? [`web:${meta.providers.webSearch}`] : [])].map((p) => (
               <span key={p} className="badge bg-green-50 text-green-700">
@@ -248,7 +312,7 @@ export default function Jobs() {
             ))}
             {!meta.providers.googleJobs && <span className="badge bg-amber-50 text-amber-700">Add SERPAPI_KEY to include Google Jobs</span>}
             <span className="badge bg-slate-100 text-slate-600">AI verification agent: {meta.ai === 'openai' ? 'OpenAI' : 'rules (add OPENAI_API_KEY)'}</span>
-            <span>· A {meta.dailyLimit}-search daily limit applies · A 1-minute video ad plays with every search</span>
+            <span>· A {meta.dailyLimit}-search daily limit applies · A {meta.videoAdSeconds ? (meta.videoAdSeconds >= 60 ? `${Math.round(meta.videoAdSeconds / 60)}-minute` : `${meta.videoAdSeconds}-second`) : '30-second'} video ad plays with every search</span>
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -258,7 +322,7 @@ export default function Jobs() {
       {status === 'failed' && <div className="card border-red-200 bg-red-50 text-sm text-red-700">{current.search.error || 'The job search failed. Please try again.'}</div>}
       {searching && !locked && (
         <div className="card flex items-center gap-3 text-sm text-slate-600">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#775144] border-t-transparent" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#3730a3] border-t-transparent" />
           Searching Google Jobs, company career pages and job portals, and verifying every listing against its source…
         </div>
       )}
@@ -268,7 +332,7 @@ export default function Jobs() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
-                {result.items.length} jobs for “{result.search.query}”
+                {items.length === result.items.length ? `${items.length} jobs` : `${items.length} of ${result.items.length} jobs`} for “{result.search.query}”
               </h2>
               <div className="text-xs text-slate-500">
                 {[result.search.level === 'fresher' ? 'Fresher' : 'Experienced', labelOf(meta?.categories, result.search.category), labelOf(meta?.education, result.search.education), [result.search.city, result.search.state].filter(Boolean).join(', ') || 'All India', POSTED_LABEL[result.search.postedWithin]]
@@ -279,15 +343,26 @@ export default function Jobs() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <input className="input w-48" placeholder="Filter results…" value={filter.text} onChange={(e) => setFilter((f) => ({ ...f, text: e.target.value }))} />
-              <select className="input w-44" value={filter.platform} onChange={(e) => setFilter((f) => ({ ...f, platform: e.target.value }))}>
+              <input className="input w-40" placeholder="Filter results…" value={filter.text} onChange={(e) => setFilter((f) => ({ ...f, text: e.target.value }))} />
+              <select className="input w-36" value={filter.platform} onChange={(e) => setFilter((f) => ({ ...f, platform: e.target.value }))}>
                 <option value="">All sources</option>
                 {platforms.map((p) => (
                   <option key={p}>{p}</option>
                 ))}
               </select>
+              <select className="input w-36" value={filter.postedWithin} onChange={(e) => setFilter((f) => ({ ...f, postedWithin: Number(e.target.value) }))} title="Filter loaded jobs by posting date">
+                <option value={0}>All dates</option>
+                <option value={1}>Last 24 hours</option>
+                <option value={3}>Last 3 days</option>
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+              </select>
+              <select className="input w-32" value={filter.sortBy} onChange={(e) => setFilter((f) => ({ ...f, sortBy: e.target.value }))} title="Sort order">
+                <option value="newest">Newest first</option>
+                <option value="relevance">Best match</option>
+              </select>
               <label className="flex items-center gap-1 text-sm text-slate-600">
-                <input type="checkbox" checked={filter.contact} onChange={(e) => setFilter((f) => ({ ...f, contact: e.target.checked }))} /> Has email / phone
+                <input type="checkbox" checked={filter.contact} onChange={(e) => setFilter((f) => ({ ...f, contact: e.target.checked }))} /> Has contact
               </label>
             </div>
           </div>
@@ -307,23 +382,23 @@ export default function Jobs() {
 
       {history.length > 0 && (
         <div className="card">
-          <h2 className="mb-2 font-semibold text-[#2A0800]">Your recent job searches</h2>
-          <ul className="divide-y divide-[#E5D3D1]">
+          <h2 className="mb-2 font-semibold text-[#0b1c30]">Your recent job searches</h2>
+          <ul className="divide-y divide-[#e0e7ff]">
             {history.map((s) => (
               <li key={s._id} className="flex items-center justify-between gap-3 py-2 text-sm">
                 <div className="min-w-0">
-                  <div className="truncate font-medium text-[#2A0800]">{s.query}</div>
-                  <div className="text-xs text-[#775144]">
+                  <div className="truncate font-medium text-[#0b1c30]">{s.query}</div>
+                  <div className="text-xs text-slate-500">
                     {s.status === 'completed' ? `${s.resultCount} jobs` : s.status === 'failed' ? 'Failed' : 'Searching…'} · {new Date(s.createdAt).toLocaleString()}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-3">
                   {s.status === 'completed' && (
-                    <button type="button" className="text-xs font-medium text-[#775144] hover:text-[#2A0800] hover:underline" onClick={() => openSearch(s)}>
+                    <button type="button" className="text-xs font-medium text-[#3730a3] hover:text-[#1e1b4b] hover:underline" onClick={() => openSearch(s)}>
                       View results
                     </button>
                   )}
-                  <button type="button" className="text-xs font-medium text-[#775144] hover:text-[#2A0800] hover:underline" onClick={() => rerun(s)}>
+                  <button type="button" className="text-xs font-medium text-[#3730a3] hover:text-[#1e1b4b] hover:underline" onClick={() => rerun(s)}>
                     Search again
                   </button>
                 </div>

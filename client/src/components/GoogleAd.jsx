@@ -11,7 +11,7 @@ const FORMATS = {
 const DEMO_CREATIVES = [
   { brand: 'HireNest HRMS', headline: 'Hire faster with AI screening', body: 'Payroll, attendance & recruitment in one place. 14-day free trial.', cta: 'Start free', color: 'from-emerald-500 to-teal-600' },
   { brand: 'MailPilot', headline: 'Cold email that lands in the inbox', body: 'Warm-up, sequences and reply tracking for B2B outreach.', cta: 'Try MailPilot', color: 'from-violet-500 to-indigo-600' },
-  { brand: 'SkillUp Academy', headline: 'Job-ready courses for freshers', body: 'Learn Excel, Tally, coding & spoken English with placement support.', cta: 'Explore courses', color: 'from-[#C09891] to-[#775144]' },
+  { brand: 'SkillUp Academy', headline: 'Job-ready courses for freshers', body: 'Learn Excel, Tally, coding & spoken English with placement support.', cta: 'Explore courses', color: 'from-[#3730a3] to-[#2563eb]' },
   { brand: 'TallyBooks Cloud', headline: 'GST billing from any device', body: 'Invoices, e-way bills and reports synced in real time.', cta: 'Get started', color: 'from-lime-500 to-green-700' },
   { brand: 'SkillForge Academy', headline: 'Upskill your IT team', body: 'Live cloud, DevOps & AI courses with certification.', cta: 'View courses', color: 'from-fuchsia-500 to-pink-600' },
   { brand: 'OfficeHub Coworking', headline: 'Desks from ₹4,999 / month', body: 'Plug-and-play offices in Ahmedabad, Pune & Bengaluru.', cta: 'Visit now', color: 'from-orange-500 to-rose-600' },
@@ -44,7 +44,7 @@ function DemoAd({ slot }) {
           <div className="text-sm font-semibold text-slate-900">{creative.headline}</div>
           {slot !== 'sidebar' && <div className="text-xs text-slate-600">{creative.body}</div>}
         </div>
-        <span className={`shrink-0 rounded-full bg-[#775144] hover:bg-[#2A0800] px-3 py-1 text-center text-xs font-semibold text-white transition ${horizontal ? '' : 'mt-auto'}`}>{creative.cta}</span>
+        <span className={`shrink-0 rounded-full bg-gradient-to-r from-[#3730a3] to-[#2563eb] hover:from-[#2e288a] hover:to-[#1d4ed8] px-3 py-1 text-center text-xs font-semibold text-white transition ${horizontal ? '' : 'mt-auto'}`}>{creative.cta}</span>
       </div>
       <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-400" title="Placeholder shown until an AdSense ad unit is configured">
         {f.size}

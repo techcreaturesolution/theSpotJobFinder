@@ -44,6 +44,7 @@ router.get('/meta', (_req, res) => {
     providers: jobProviders(),
     ai: llmEnabled() ? 'openai' : 'rules',
     dailyLimit: env.dailyJobSearchLimit,
+    videoAdSeconds: env.videoAd.seconds,
   });
 });
 
@@ -116,12 +117,56 @@ router.get('/:id', async (req, res) => {
   res.json({ job });
 });
 
+export function resolveJobApplyUrl(job, requestedLink) {
+  const allowed = [
+    job.applyUrl,
+    ...(job.applyOptions || []).map((o) => o.link),
+    job.sourceUrl,
+    job.companyWebsite,
+  ].filter(Boolean);
+
+  if (requestedLink && allowed.includes(requestedLink)) {
+    return requestedLink;
+  }
+
+  const isLinkedInSource =
+    job.platform === 'LinkedIn' ||
+    String(job.via || '').toLowerCase().includes('linkedin') ||
+    job.provider === 'apify_linkedin' ||
+    /linkedin\.com/i.test(job.applyUrl || '') ||
+    /linkedin\.com/i.test(job.sourceUrl || '') ||
+    job.applyOptions?.some((o) => /linkedin\.com/i.test(o.link));
+
+  if (isLinkedInSource) {
+    const linkedInOption = (job.applyOptions || []).find((o) => /linkedin\.com/i.test(o.link));
+    if (linkedInOption?.link) return linkedInOption.link;
+    if (job.applyUrl && /linkedin\.com/i.test(job.applyUrl)) return job.applyUrl;
+    if (job.sourceUrl && /linkedin\.com/i.test(job.sourceUrl)) return job.sourceUrl;
+  }
+
+  // Look for direct company career or application link
+  const companyOption = (job.applyOptions || []).find((o) =>
+    /company|career|apply|official/i.test(o.title) && !/linkedin|naukri|indeed|shine|foundit/i.test(o.title)
+  );
+  if (companyOption?.link) return companyOption.link;
+
+  if (job.applyUrl) return job.applyUrl;
+  if (job.applyOptions?.[0]?.link) return job.applyOptions[0].link;
+  if (job.sourceUrl) return job.sourceUrl;
+  if (job.companyWebsite) return job.companyWebsite;
+
+  if (job.emails?.[0]) {
+    return `mailto:${job.emails[0]}?subject=${encodeURIComponent(`Application for ${job.title}`)}`;
+  }
+
+  return null;
+}
+
 router.post('/:id/apply', async (req, res) => {
   const job = await JobPosting.findOneAndUpdate({ _id: req.params.id, active: true }, { $inc: { applyClicks: 1 } }, { returnDocument: 'after' });
   if (!job) throw new HttpError(404, 'Job not found');
   const link = z.object({ link: z.string().url().optional() }).parse(req.body || {}).link;
-  const allowed = [job.companyWebsite, job.applyUrl, ...job.applyOptions.map((o) => o.link), job.sourceUrl].filter(Boolean);
-  const url = (link && allowed.includes(link) ? link : allowed[0]) || (job.emails[0] ? `mailto:${job.emails[0]}?subject=${encodeURIComponent(`Application for ${job.title}`)}` : null);
+  const url = resolveJobApplyUrl(job, link);
   if (!url) throw new HttpError(404, 'This job has no apply link or email');
   res.json({ url });
 });

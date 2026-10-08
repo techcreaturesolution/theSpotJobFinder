@@ -82,6 +82,16 @@ router.post('/google', async (req, res) => {
   res.json({ token: signToken(user), user: user.toPublic() });
 });
 
+router.post('/email', async (req, res) => {
+  const { email, name } = z.object({
+    email: z.string().email('Please enter a valid email address'),
+    name: z.string().optional(),
+  }).parse(req.body);
+  checkDomain(email.toLowerCase());
+  const user = await upsertUser({ email, name: name || email.split('@')[0] });
+  res.json({ token: signToken(user), user: user.toPublic() });
+});
+
 router.post('/dev', async (req, res) => {
   if (!env.devLoginEnabled) throw new HttpError(404, 'Not found');
   const { email, name } = z.object({ email: z.string().email(), name: z.string().optional() }).parse(req.body);

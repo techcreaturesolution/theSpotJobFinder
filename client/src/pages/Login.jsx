@@ -10,7 +10,8 @@ export default function Login() {
   const navigate = useNavigate();
   const [config, setConfig] = useState(null);
   const [error, setError] = useState('');
-  const [devEmail, setDevEmail] = useState('');
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     api
@@ -36,24 +37,28 @@ export default function Login() {
     }
   };
 
-  const onDev = async (e) => {
+  const onEmailSubmit = async (e) => {
     e.preventDefault();
+    if (!email.trim()) return;
     setError('');
+    setSubmitting(true);
     try {
-      const { data } = await api.post('/auth/dev', { email: devEmail });
+      const { data } = await api.post('/auth/email', { email: email.trim() });
       finish(data);
     } catch (err) {
       setError(errMsg(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-br from-[#0b1c30] via-[#1e1b4b] to-[#3730a3] p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl border border-[#e0e7ff]">
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-700 text-lg font-bold text-white">J</div>
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#3730a3] to-[#2563eb] text-lg font-bold text-white shadow-md">J</div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">TheSpot JobFinder</h1>
+            <h1 className="text-xl font-bold text-[#0b1c30]">TheSpot JobFinder</h1>
             <p className="text-sm text-slate-500">Verified jobs across India, in one search</p>
           </div>
         </div>
@@ -65,6 +70,29 @@ export default function Login() {
         </ul>
 
         {!config && !error && <div className="text-center text-sm text-slate-500">Loading…</div>}
+
+        <form onSubmit={onEmailSubmit} className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">Email Address</label>
+            <input
+              className="input w-full"
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <button type="submit" className="btn-primary w-full" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Continue with email'}
+          </button>
+        </form>
+
+        <div className="my-4 flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-xs uppercase text-slate-400">or</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
 
         {config?.googleClientId ? (
           <GoogleOAuthProvider clientId={config.googleClientId}>
@@ -81,14 +109,6 @@ export default function Login() {
         )}
         {config?.allowedEmailDomains?.length > 0 && (
           <p className="mt-3 text-center text-xs text-slate-500">Only {config.allowedEmailDomains.join(', ')} accounts can sign in.</p>
-        )}
-
-        {config?.devLoginEnabled && (
-          <form onSubmit={onDev} className="mt-6 space-y-2 border-t border-slate-100 pt-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Developer login (local only)</div>
-            <input className="input" type="email" placeholder="you@gmail.com" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} required />
-            <button className="btn-secondary w-full">Continue with email</button>
-          </form>
         )}
 
         {error && <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
