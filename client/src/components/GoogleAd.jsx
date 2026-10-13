@@ -91,10 +91,10 @@ function AdsenseUnit({ client, slotId, slot, testMode }) {
 }
 
 export default function GoogleAd({ slot = 'banner', className = '' }) {
-  const [config, setConfig] = useState(null);
+  const [config, setConfig] = useState({ client: null, slots: {}, testMode: false, demo: true });
   useEffect(() => {
     let alive = true;
-    getAdsenseConfig().then((c) => alive && setConfig(c));
+    getAdsenseConfig().then((c) => alive && c && setConfig(c));
     return () => {
       alive = false;
     };

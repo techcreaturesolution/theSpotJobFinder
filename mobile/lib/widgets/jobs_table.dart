@@ -109,7 +109,13 @@ class JobsTable extends StatelessWidget {
                         ].join('\n').ifEmpty('—'),
                       ),
                     ),
-                    DataCell(Text(shortDate(j.postedAt))),
+                    DataCell(
+                      Text(
+                        j.postedAt != null
+                            ? shortDate(j.postedAt)
+                            : (j.postedText.isNotEmpty ? j.postedText : '—'),
+                      ),
+                    ),
                     DataCell(
                       Chip(
                         label: Text(j.verified ? 'Verified' : 'Unverified'),

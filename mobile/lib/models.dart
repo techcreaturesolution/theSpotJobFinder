@@ -5,6 +5,35 @@ List<String> _list(dynamic v) => v is List
 DateTime? _date(dynamic v) =>
     v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
 
+DateTime? _parsePostedDate(dynamic postedAt, dynamic postedText) {
+  final d = _date(postedAt);
+  if (d != null) return d;
+  if (postedText == null) return null;
+  final s = postedText.toString().toLowerCase().trim();
+  final now = DateTime.now();
+  if (RegExp(r'today|just (?:now|posted)').hasMatch(s)) return now;
+  if (RegExp(r'yesterday').hasMatch(s)) return now.subtract(const Duration(days: 1));
+  final m = RegExp(
+    r'(\d+|an?|one)\+?\s*(m|min|minutes?|h|hr|hours?|d|day|days?|w|week|weeks?|mo|month|months?)\s*ago',
+  ).firstMatch(s);
+  if (m != null) {
+    final count = int.tryParse(m.group(1) ?? '') ?? 1;
+    final unit = m.group(2) ?? '';
+    if (unit.startsWith('m') && !unit.startsWith('mo')) {
+      return now.subtract(Duration(minutes: count));
+    } else if (unit.startsWith('h')) {
+      return now.subtract(Duration(hours: count));
+    } else if (unit.startsWith('d')) {
+      return now.subtract(Duration(days: count));
+    } else if (unit.startsWith('w')) {
+      return now.subtract(Duration(days: count * 7));
+    } else if (unit.startsWith('mo')) {
+      return now.subtract(Duration(days: count * 30));
+    }
+  }
+  return null;
+}
+
 class Option {
   const Option(this.key, this.label);
   final String key;
@@ -74,6 +103,7 @@ class Job {
     required this.salary,
     required this.workFromHome,
     required this.postedAt,
+    required this.postedText,
     required this.validThrough,
     required this.platform,
     required this.applyOptions,
@@ -98,6 +128,7 @@ class Job {
   final String salary;
   final bool workFromHome;
   final DateTime? postedAt;
+  final String postedText;
   final DateTime? validThrough;
   final String platform;
   final List<ApplyOption> applyOptions;
@@ -107,6 +138,43 @@ class Job {
   final String verificationMethod;
 
   bool get canApply => applyOptions.isNotEmpty || emails.isNotEmpty;
+
+  bool matchesPostedWithin(int days) {
+    if (days <= 0) return true;
+    final date = postedAt;
+    final now = DateTime.now();
+    if (date != null) {
+      final cutoffHours = days == 1
+          ? 36
+          : (days <= 7 ? (days * 24 + 12) : (days * 24 + 48));
+      final cutoff = now.subtract(Duration(hours: cutoffHours));
+      return date.isAfter(cutoff);
+    }
+    final text = postedText.toLowerCase().trim();
+    if (text.isEmpty) {
+      return days > 3;
+    }
+    if (RegExp(r'years?\s*ago|\b\d+\s*y\s*ago').hasMatch(text)) return false;
+    final daysMatch = RegExp(r'(\d+|an?|one)\+?\s*(?:days?|d)\s*ago').firstMatch(text);
+    if (daysMatch != null) {
+      final d = int.tryParse(daysMatch.group(1) ?? '') ?? 1;
+      return d <= (days == 1 ? 1 : days);
+    }
+    final weeksMatch = RegExp(r'(\d+|an?|one)\+?\s*(?:weeks?|w)\s*ago').firstMatch(text);
+    if (weeksMatch != null) {
+      final w = int.tryParse(weeksMatch.group(1) ?? '') ?? 1;
+      return w * 7 <= days;
+    }
+    final monthsMatch = RegExp(r'(\d+|an?|one)\+?\s*(?:months?|mo)\s*ago').firstMatch(text);
+    if (monthsMatch != null) {
+      final mo = int.tryParse(monthsMatch.group(1) ?? '') ?? 1;
+      return mo * 30 <= days;
+    }
+    if (RegExp(r'today|yesterday|just (?:now|posted)|\d+\s*(?:hours?|h|mins?|minutes?)\s*ago').hasMatch(text)) {
+      return true;
+    }
+    return days > 3;
+  }
 
   factory Job.fromJson(Map<String, dynamic> j) {
     final seen = <String>{};
@@ -126,6 +194,8 @@ class Job {
       }
     }
     final verification = j['verification'] as Map? ?? const {};
+    final pText = _s(j['postedText']);
+    final pDate = _parsePostedDate(j['postedAt'], pText);
     return Job(
       id: _s(j['_id']),
       title: _s(j['title']),
@@ -141,7 +211,8 @@ class Job {
       employmentType: _s(j['employmentType']),
       salary: _s(j['salary']),
       workFromHome: j['workFromHome'] == true,
-      postedAt: _date(j['postedAt']),
+      postedAt: pDate,
+      postedText: pText,
       validThrough: _date(j['validThrough']),
       platform: _s(j['platform']),
       applyOptions: options,
@@ -164,6 +235,7 @@ class AdGateState {
     required this.watchedSeconds,
     required this.completed,
   });
+
   final bool required;
   final int seconds;
   final int watchedSeconds;
@@ -184,6 +256,7 @@ class JobSearch {
     required this.level,
     required this.state,
     required this.city,
+    required this.postedWithin,
     required this.status,
     required this.error,
     required this.resultCount,
@@ -198,6 +271,7 @@ class JobSearch {
   final String level;
   final String state;
   final String city;
+  final int postedWithin;
   final String status;
   final String error;
   final int resultCount;
@@ -216,6 +290,7 @@ class JobSearch {
     level: _s(j['level']),
     state: _s(j['state']),
     city: _s(j['city']),
+    postedWithin: (j['postedWithin'] as num?)?.toInt() ?? 30,
     status: _s(j['status']),
     error: _s(j['error']),
     resultCount: (j['resultCount'] as num?)?.toInt() ?? 0,

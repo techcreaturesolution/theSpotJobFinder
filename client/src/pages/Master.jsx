@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, errMsg } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
+import CustomSelect from '../components/CustomSelect.jsx';
 
 const TABS = { overview: 'Overview', clients: 'Clients', limits: 'Limits & AI agents', saved: 'Saved searches', runs: 'Agent runs' };
 const API_LABEL = { jsearch: 'JSearch', adzuna: 'Adzuna', jooble: 'Jooble', careerjet: 'Careerjet' };
@@ -68,10 +69,10 @@ function UserSearches({ user, onClose }) {
   }, [user._id]);
   return (
     <tr>
-      <td className="td bg-slate-50" colSpan={10}>
+      <td className="td bg-[#faf8ff] border-t border-[#f0eaff]" colSpan={10}>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-semibold">Recent searches by {user.email}</span>
-          <button type="button" className="text-xs text-slate-500" onClick={onClose}>
+          <span className="text-xs font-bold text-[#1e1b4b]">Recent searches by {user.email}</span>
+          <button type="button" className="text-xs font-semibold text-slate-500 hover:text-[#6355d8]" onClick={onClose}>
             Close
           </button>
         </div>
@@ -83,11 +84,11 @@ function UserSearches({ user, onClose }) {
           <table className="min-w-full text-xs">
             <tbody>
               {items.map((s) => (
-                <tr key={s._id}>
-                  <td className="py-1 pr-3 text-slate-500">{when(s.createdAt)}</td>
-                  <td className="py-1 pr-3">{[s.prompt, s.category, s.level, s.education].filter(Boolean).join(' · ') || '—'}</td>
-                  <td className="py-1 pr-3">{[s.city, s.state].filter(Boolean).join(', ') || 'All India'}</td>
-                  <td className="py-1 pr-3">
+                <tr key={s._id} className="hover:bg-white/60">
+                  <td className="py-1.5 pr-3 text-slate-500">{when(s.createdAt)}</td>
+                  <td className="py-1.5 pr-3 font-medium text-[#1e1b4b]">{[s.prompt, s.category, s.level, s.education].filter(Boolean).join(' · ') || '—'}</td>
+                  <td className="py-1.5 pr-3 text-slate-600">{[s.city, s.state].filter(Boolean).join(', ') || 'All India'}</td>
+                  <td className="py-1.5 pr-3 text-[#6355d8] font-semibold">
                     {s.status} · {s.resultCount} jobs
                   </td>
                 </tr>
@@ -116,7 +117,7 @@ function LimitEditor({ user, onSave }) {
         onChange={(e) => setValue(e.target.value)}
       />
       {changed && (
-        <button type="button" className="text-xs text-blue-700" onClick={() => onSave(value === '' ? null : Number(value))}>
+        <button type="button" className="text-xs font-semibold text-[#6355d8] hover:text-[#5243d2]" onClick={() => onSave(value === '' ? null : Number(value))}>
           Save
         </button>
       )}
@@ -166,34 +167,41 @@ function Clients({ setError }) {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <input className="input max-w-xs" placeholder="Search name, email, mobile or city" value={filters.q} onChange={set('q')} />
-        <select className="input w-40" value={filters.role} onChange={set('role')} aria-label="Role">
+        <CustomSelect className="input w-40" value={filters.role} onChange={set('role')} aria-label="Role">
           <option value="">All roles</option>
           <option value="user">Job seekers</option>
           <option value="employer">Employers</option>
           <option value="admin">Admins</option>
           <option value="master">Master admins</option>
-        </select>
-        <select className="input w-40" value={filters.status} onChange={set('status')} aria-label="Status">
+        </CustomSelect>
+        <CustomSelect className="input w-40" value={filters.status} onChange={set('status')} aria-label="Status">
           <option value="">Any status</option>
           <option value="active">Active</option>
           <option value="blocked">Blocked</option>
-        </select>
-        <select className="input w-44" value={filters.profile} onChange={set('profile')} aria-label="Profile">
+        </CustomSelect>
+        <CustomSelect className="input w-44" value={filters.profile} onChange={set('profile')} aria-label="Profile">
           <option value="">Any profile</option>
           <option value="complete">Profile complete</option>
           <option value="incomplete">Profile incomplete</option>
-        </select>
-        <button type="button" className="btn-secondary ml-auto" onClick={download}>
-          Download CSV
+        </CustomSelect>
+        <button
+          type="button"
+          className="ml-auto inline-flex items-center gap-2 rounded-full bg-[#6355d8] px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-[#5243d2] transition card-hover-lift"
+          onClick={download}
+        >
+          <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span>Download CSV</span>
         </button>
       </div>
       <p className="text-xs text-slate-500">Daily limit: leave empty to use the global limit; 0 pauses searching for that user.</p>
-      <div className="card overflow-x-auto p-0">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
+      <div className="card overflow-x-auto p-0 border border-[#f0eaff]">
+        <table className="min-w-full divide-y divide-[#f0eaff]">
+          <thead className="bg-[#faf8ff]">
             <tr>
               <th className="th">Client</th>
               <th className="th">Mobile &amp; location</th>
@@ -204,46 +212,46 @@ function Clients({ setError }) {
               <th className="th">Daily limit</th>
               <th className="th">AI runs today</th>
               <th className="th">Last login / search</th>
-              <th className="th" />
+              <th className="th text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#f0eaff]">
             {items.map((u) => {
               const master = u.role === 'master';
               const self = String(u._id) === String(me?.id);
               return [
-                <tr key={u._id}>
+                <tr key={u._id} className="hover:bg-[#faf8ff]/80 transition-colors">
                   <td className="td">
-                    <div className="font-medium">{u.name || '—'}</div>
+                    <div className="font-medium text-[#1e1b4b]">{u.name || '—'}</div>
                     <div className="text-xs text-slate-500">{u.email}</div>
                     <div className="text-xs text-slate-400">Joined {when(u.createdAt)}</div>
                   </td>
                   <td className="td text-sm">
-                    {u.phone ? <a href={`tel:+91${u.phone}`}>+91 {u.phone}</a> : <span className="text-slate-400">—</span>}
+                    {u.phone ? <a href={`tel:+91${u.phone}`} className="font-semibold text-[#6355d8] hover:underline">+91 {u.phone}</a> : <span className="text-slate-400">—</span>}
                     <div className="text-xs text-slate-500">{[u.city, u.state].filter(Boolean).join(', ') || '—'}</div>
                   </td>
                   <td className="td text-xs">
                     {u.profileComplete && u.role === 'employer' ? (
                       <>
-                        <div className="font-medium">{u.companyName}</div>
+                        <div className="font-medium text-[#1e1b4b]">{u.companyName}</div>
                         {u.companyWebsite && <div className="text-slate-500">{u.companyWebsite}</div>}
                       </>
                     ) : u.profileComplete ? (
                       <>
-                        <div className="capitalize">{u.level}</div>
+                        <div className="capitalize font-medium text-[#1e1b4b]">{u.level}</div>
                         <div className="text-slate-500">{u.educationLabel}</div>
                       </>
                     ) : (
-                      <span className="badge bg-amber-100 text-amber-700">incomplete</span>
+                      <span className="badge bg-amber-50 text-amber-700 border border-amber-200/50">incomplete</span>
                     )}
                   </td>
                   <td className="td">
-                    <span className={`badge ${master ? 'bg-purple-100 text-purple-700' : u.role === 'admin' ? 'bg-blue-100 text-blue-700' : u.role === 'employer' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`badge ${master ? 'bg-[#ede9fe] text-[#6355d8] border border-[#d8b4fe]/50' : u.role === 'admin' ? 'bg-[#f0eaff] text-[#6355d8] border border-[#d8b4fe]/30' : u.role === 'employer' ? 'bg-amber-50 text-amber-800 border border-amber-200/50' : 'bg-[#faf8ff] text-slate-600 border border-[#f0eaff]'}`}>
                       {master ? 'master admin' : u.role === 'user' ? 'job seeker' : u.role}
                     </span>
                   </td>
                   <td className="td">
-                    <span className={`badge ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{u.active ? 'active' : 'blocked'}</span>
+                    <span className={`badge ${u.active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' : 'bg-rose-50 text-rose-700 border border-rose-200/50'}`}>{u.active ? 'active' : 'blocked'}</span>
                   </td>
                   <td className="td">
                     {u.searchesToday}
@@ -260,15 +268,15 @@ function Clients({ setError }) {
                     <div className="text-slate-400">{when(u.lastSearchAt)}</div>
                   </td>
                   <td className="td whitespace-nowrap text-right text-xs">
-                    <button type="button" className="mr-3 text-slate-600" onClick={() => setOpen(open === u._id ? null : u._id)}>
+                    <button type="button" className="mr-3 font-semibold text-slate-600 hover:text-[#6355d8]" onClick={() => setOpen(open === u._id ? null : u._id)}>
                       Searches
                     </button>
                     {!master && !self && (
                       <>
-                        <button type="button" className="mr-3 text-blue-700" onClick={() => update(u, { role: u.role === 'admin' ? 'user' : 'admin' })}>
+                        <button type="button" className="mr-3 font-semibold text-[#6355d8] hover:text-[#5243d2]" onClick={() => update(u, { role: u.role === 'admin' ? 'user' : 'admin' })}>
                           Make {u.role === 'admin' ? 'job seeker' : 'admin'}
                         </button>
-                        <button type="button" className={u.active ? 'text-red-600' : 'text-green-700'} onClick={() => update(u, { active: !u.active })}>
+                        <button type="button" className={u.active ? 'font-semibold text-rose-600 hover:text-rose-700' : 'font-semibold text-emerald-600 hover:text-emerald-700'} onClick={() => update(u, { active: !u.active })}>
                           {u.active ? 'Block' : 'Unblock'}
                         </button>
                       </>
@@ -294,11 +302,16 @@ function Clients({ setError }) {
 
 function Toggle({ label, hint, checked, onChange }) {
   return (
-    <label className="flex items-start gap-3">
-      <input type="checkbox" className="mt-1" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <label className="flex items-start gap-3 cursor-pointer group">
+      <input
+        type="checkbox"
+        className="mt-1 h-4 w-4 rounded border-[#d8b4fe] text-[#6355d8] accent-[#6355d8] focus:ring-[#6355d8]"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
       <span>
-        <span className="text-sm font-medium">{label}</span>
-        {hint && <span className="block text-xs text-slate-500">{hint}</span>}
+        <span className="text-sm font-medium text-[#1e1b4b] group-hover:text-[#6355d8] transition-colors">{label}</span>
+        {hint && <span className="block text-xs text-slate-500 mt-0.5 leading-relaxed">{hint}</span>}
       </span>
     </label>
   );
@@ -306,11 +319,19 @@ function Toggle({ label, hint, checked, onChange }) {
 
 function NumberField({ label, hint, value, onChange }) {
   return (
-    <label className="block">
-      <span className="text-sm font-medium">{label}</span>
-      <input className="input mt-1 w-40" type="number" min={0} value={value} onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
-    </label>
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium text-[#1e1b4b]">{label}</span>
+        <input
+          className="input w-36 px-3 py-1.5 text-sm"
+          type="number"
+          min={0}
+          value={value}
+          onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+        />
+      </div>
+      {hint && <p className="text-xs text-slate-500 leading-relaxed">{hint}</p>}
+    </div>
   );
 }
 
@@ -369,7 +390,7 @@ function Limits({ overview, onSaved, setError }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="card space-y-4">
-        <h2 className="font-semibold">Job search limits</h2>
+        <h2 className="font-bold text-[#1e1b4b]">Job search limits</h2>
         <NumberField
           label="Daily searches per user"
           hint="Applies to every user without a personal limit. 0 pauses search for them."
@@ -379,7 +400,7 @@ function Limits({ overview, onSaved, setError }) {
         <Toggle label="Admins and master admins search without a limit" checked={form.staffUnlimitedSearch} onChange={(v) => setForm((f) => ({ ...f, staffUnlimitedSearch: v }))} />
       </div>
       <div className="card space-y-4">
-        <h2 className="font-semibold">AI agents</h2>
+        <h2 className="font-bold text-[#1e1b4b]">AI agents</h2>
         <Toggle
           label="Use OpenAI"
           hint={overview.system.openaiConfigured ? 'Query planning, job verification and AI import. Off = pattern matching only.' : 'No OPENAI_API_KEY on the server, so pattern matching is used.'}
@@ -389,39 +410,47 @@ function Limits({ overview, onSaved, setError }) {
         <Toggle label="AI import (paste a post or link)" checked={ai.extractEnabled} onChange={setAi('extractEnabled')} />
         <NumberField label="AI imports per admin per day" hint="Master admins are not limited." value={ai.extractDailyLimit} onChange={setAi('extractDailyLimit')} />
         <Toggle label="AI auto-import (scheduled rules)" hint="Off stops the scheduler and every manual run." checked={ai.autoImportEnabled} onChange={setAi('autoImportEnabled')} />
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-6">
           <NumberField label="Auto-import runs per day" value={ai.autoImportDailyRuns} onChange={setAi('autoImportDailyRuns')} />
           <NumberField label="Auto-imported jobs per day" value={ai.autoImportDailyPosts} onChange={setAi('autoImportDailyPosts')} />
         </div>
         <p className="text-xs text-slate-500">When a daily limit is reached, the scheduler and admins wait until midnight IST. Your own manual runs are not counted against it.</p>
       </div>
       <div className="card space-y-4">
-        <h2 className="font-semibold">Saved search results</h2>
+        <h2 className="font-bold text-[#1e1b4b]">Saved search results</h2>
         <Toggle
           label="Reuse saved results"
           hint="When someone repeats a search (e.g. new jobs in Ahmedabad), they get the saved jobs instead of a new AI agent run. Each saved job stays until its last apply date passes or it closes; new portal jobs are added. The AI agent runs again only when every saved job for that search has closed."
           checked={cache.enabled}
           onChange={setGroup('cache', 'enabled')}
         />
-        <button type="button" className="btn-secondary" onClick={clearSaved}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-full border border-[#d8b4fe] bg-white px-5 py-2 text-xs sm:text-sm font-semibold text-[#6355d8] shadow-sm hover:bg-[#f3eefe] hover:border-[#6355d8] transition card-hover-lift"
+          onClick={clearSaved}
+        >
           Clear all saved results
         </button>
         <p className="text-xs text-slate-500">To clear one search at a time, open the Saved searches tab.</p>
       </div>
       <div className="card space-y-4">
-        <h2 className="font-semibold">Closed jobs</h2>
+        <h2 className="font-bold text-[#1e1b4b]">Closed jobs</h2>
         <Toggle
           label="Delete closed and expired jobs once a day"
           hint="Removes jobs whose source page closed, whose last date passed, or that no job site has listed for 21 days. Jobs you hid yourself in Admin are kept."
           checked={cleanup.enabled}
           onChange={setGroup('cleanup', 'enabled')}
         />
-        <button type="button" className="btn-secondary" onClick={runCleanup}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-full border border-[#d8b4fe] bg-white px-5 py-2 text-xs sm:text-sm font-semibold text-[#6355d8] shadow-sm hover:bg-[#f3eefe] hover:border-[#6355d8] transition card-hover-lift"
+          onClick={runCleanup}
+        >
           Remove closed jobs now
         </button>
       </div>
       <div className="card space-y-4">
-        <h2 className="font-semibold">Employer job posts</h2>
+        <h2 className="font-bold text-[#1e1b4b]">Employer job posts</h2>
         <Toggle
           label="An admin approves every employer job before it goes live"
           hint="Edits by the employer go back for approval too. Off = employer jobs go live at once."
@@ -431,13 +460,22 @@ function Limits({ overview, onSaved, setError }) {
         <NumberField label="Jobs per employer per day" hint="0 pauses employer posting." value={employer.dailyPosts} onChange={setGroup('employer', 'dailyPosts')} />
       </div>
       <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
-        <button type="button" className="btn-primary" onClick={save}>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#6355d8] px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-[#5243d2] transition card-hover-lift"
+          onClick={save}
+        >
           Save settings
         </button>
-        <button type="button" className="btn-secondary" disabled={running || !overview.settings.ai.autoImportEnabled} onClick={runAll}>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-[#6355d8] bg-white px-5 py-2.5 text-xs sm:text-sm font-semibold text-[#6355d8] shadow-sm hover:bg-[#f3eefe] transition disabled:opacity-50 disabled:cursor-not-allowed card-hover-lift"
+          disabled={running || !overview.settings.ai.autoImportEnabled}
+          onClick={runAll}
+        >
           {running ? 'Starting…' : 'Run all auto-import rules now'}
         </button>
-        {saved && <span className="text-sm text-green-700">{saved}</span>}
+        {saved && <span className="text-sm font-semibold text-emerald-600">{saved}</span>}
       </div>
     </div>
   );
@@ -468,16 +506,16 @@ function SavedSearches({ setError, onChanged }) {
   const shown = (items || []).filter((s) => !q || `${s.label} ${s.city} ${s.state} ${s.role}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <input className="input max-w-xs" placeholder="Filter by keyword, city or state" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="text-xs text-slate-500">
           {items ? `${shown.length} of ${items.length} saved search(es)` : 'Loading…'} · Each one is reused until all its jobs close; clearing it makes the next matching search run the AI agent again.
         </span>
       </div>
-      <div className="card overflow-x-auto p-0">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
+      <div className="card overflow-x-auto p-0 border border-[#f0eaff]">
+        <table className="min-w-full divide-y divide-[#f0eaff]">
+          <thead className="bg-[#faf8ff]">
             <tr>
               <th className="th">Search</th>
               <th className="th">Location</th>
@@ -486,19 +524,19 @@ function SavedSearches({ setError, onChanged }) {
               <th className="th">Reused</th>
               <th className="th">Saved / last used</th>
               <th className="th">Sources</th>
-              <th className="th" />
+              <th className="th text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#f0eaff]">
             {shown.map((s) => (
-              <tr key={s._id}>
+              <tr key={s._id} className="hover:bg-[#faf8ff]/80 transition-colors">
                 <td className="td">
-                  <div className="font-medium">{s.role || s.category || '—'}</div>
+                  <div className="font-medium text-[#1e1b4b]">{s.role || s.category || '—'}</div>
                   <div className="text-xs text-slate-500">{s.label}</div>
                 </td>
                 <td className="td text-sm">{[s.city, s.state].filter(Boolean).join(', ') || 'All India'}</td>
                 <td className="td text-xs">
-                  <div className="capitalize">{s.level || 'any level'}</div>
+                  <div className="capitalize font-medium text-[#1e1b4b]">{s.level || 'any level'}</div>
                   <div className="text-slate-500">{[s.category, s.educationLabel].filter(Boolean).join(' · ') || '—'}</div>
                 </td>
                 <td className="td">{s.jobCount}</td>
@@ -509,7 +547,7 @@ function SavedSearches({ setError, onChanged }) {
                 </td>
                 <td className="td text-xs text-slate-500">{(s.providers || []).join(', ')}</td>
                 <td className="td text-right text-xs">
-                  <button type="button" className="text-red-600" onClick={() => clear(s)}>
+                  <button type="button" className="font-semibold text-rose-600 hover:text-rose-700" onClick={() => clear(s)}>
                     Clear
                   </button>
                 </td>
@@ -544,30 +582,34 @@ function Runs({ setError }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <select className="input w-56" value={agent} onChange={(e) => setAgent(e.target.value)} aria-label="Agent">
+        <CustomSelect className="input w-56" value={agent} onChange={(e) => setAgent(e.target.value)} aria-label="Agent">
           <option value="">All agents</option>
           {Object.entries(AGENT_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>
           ))}
-        </select>
-        <select className="input w-40" value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Period">
+        </CustomSelect>
+        <CustomSelect className="input w-40" value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Period">
           {[1, 7, 30, 90].map((d) => (
             <option key={d} value={d}>
               {d === 1 ? 'Today' : `Last ${d} days`}
             </option>
           ))}
-        </select>
-        <button type="button" className="btn-secondary" onClick={load}>
+        </CustomSelect>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-full border border-[#d8b4fe] bg-white px-5 py-2 text-xs sm:text-sm font-semibold text-[#6355d8] shadow-sm hover:bg-[#f3eefe] transition card-hover-lift"
+          onClick={load}
+        >
           Refresh
         </button>
       </div>
       {data && (
         <>
-          <div className="card overflow-x-auto p-0">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
+          <div className="card overflow-x-auto p-0 border border-[#f0eaff]">
+            <table className="min-w-full divide-y divide-[#f0eaff]">
+              <thead className="bg-[#faf8ff]">
                 <tr>
                   <th className="th">Day (IST)</th>
                   <th className="th">Agent</th>
@@ -578,11 +620,11 @@ function Runs({ setError }) {
                   <th className="th">Failed</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#f0eaff]">
                 {data.daily.map((d) => (
-                  <tr key={`${d.day}-${d.agent}`}>
+                  <tr key={`${d.day}-${d.agent}`} className="hover:bg-[#faf8ff]/80 transition-colors">
                     <td className="td">{d.day}</td>
-                    <td className="td">{AGENT_LABEL[d.agent]}</td>
+                    <td className="td font-medium text-[#1e1b4b]">{AGENT_LABEL[d.agent]}</td>
                     <td className="td">{d.runs}</td>
                     <td className="td">{d.posted}</td>
                     <td className="td">{d.drafts}</td>
@@ -600,9 +642,9 @@ function Runs({ setError }) {
               </tbody>
             </table>
           </div>
-          <div className="card overflow-x-auto p-0">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
+          <div className="card overflow-x-auto p-0 border border-[#f0eaff]">
+            <table className="min-w-full divide-y divide-[#f0eaff]">
+              <thead className="bg-[#faf8ff]">
                 <tr>
                   <th className="th">Time</th>
                   <th className="th">Agent</th>
@@ -612,18 +654,18 @@ function Runs({ setError }) {
                   <th className="th">Duration</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#f0eaff]">
                 {data.items.map((r) => (
-                  <tr key={r._id}>
+                  <tr key={r._id} className="hover:bg-[#faf8ff]/80 transition-colors">
                     <td className="td text-xs">{when(r.createdAt)}</td>
-                    <td className="td">
+                    <td className="td font-medium text-[#1e1b4b]">
                       {AGENT_LABEL[r.agent]}
                       {r.ruleName && <div className="text-xs text-slate-500">Rule: {r.ruleName}</div>}
                     </td>
                     <td className="td text-xs">{r.trigger === 'schedule' ? 'Scheduler' : r.user?.email || 'Admin'}</td>
                     <td className="td">
-                      <span className={`badge ${r.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{r.status}</span>
-                      {r.error && <div className="mt-1 max-w-xs text-xs text-red-600">{r.error}</div>}
+                      <span className={`badge ${r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' : 'bg-rose-50 text-rose-700 border border-rose-200/50'}`}>{r.status}</span>
+                      {r.error && <div className="mt-1 max-w-xs text-xs text-rose-600 font-medium">{r.error}</div>}
                     </td>
                     <td className="td text-xs">
                       {r.agent === 'auto_import'
@@ -657,13 +699,13 @@ export default function Master() {
   useEffect(loadOverview, [loadOverview]);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Master Admin</h1>
-        <p className="text-sm text-slate-500">All clients, daily search limits, admins and the AI agents. Jobs and auto-import rules are in Admin.</p>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1e1b4b]">Master Admin</h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">All clients, daily search limits, admins and the AI agents. Jobs and auto-import rules are in Admin.</p>
       </div>
-      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      <div className="flex gap-2 border-b border-slate-200">
+      {error && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700 border border-rose-200/60">{error}</div>}
+      <div className="flex gap-2 border-b border-[#f0eaff]">
         {Object.entries(TABS).map(([k, v]) => (
           <button
             key={k}
@@ -672,7 +714,7 @@ export default function Master() {
               setTab(k);
               if (k === 'overview' || k === 'limits') loadOverview();
             }}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === k ? 'border-blue-700 text-blue-700' : 'border-transparent text-slate-500'}`}
+            className={`-mb-px border-b-2 px-5 py-2.5 text-sm font-semibold transition ${tab === k ? 'border-[#6355d8] text-[#6355d8]' : 'border-transparent text-slate-500 hover:text-[#6355d8]'}`}
           >
             {v}
           </button>

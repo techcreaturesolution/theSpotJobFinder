@@ -266,21 +266,21 @@ function keep(job, plan, postedWithin) {
     if (textAge) {
       if (/years?\s*ago|\b\d+\s*y\s*ago/i.test(textAge)) return false;
 
-      const monthsMatch = textAge.match(/(\d+)\+?\s*(?:months?|mo)\s*ago/i);
+      const monthsMatch = textAge.match(/(\d+|an?|one)\+?\s*(?:months?|mo)\s*ago/i);
       if (monthsMatch) {
-        const m = Number(monthsMatch[1]);
+        const m = /^\d+$/.test(monthsMatch[1]) ? Number(monthsMatch[1]) : 1;
         if (m * 30 > postedWithin + (postedWithin >= 30 ? 2 : 0)) return false;
       }
 
-      const weeksMatch = textAge.match(/(\d+)\+?\s*(?:weeks?|w)\s*ago/i);
+      const weeksMatch = textAge.match(/(\d+|an?|one)\+?\s*(?:weeks?|w)\s*ago/i);
       if (weeksMatch) {
-        const w = Number(weeksMatch[1]);
+        const w = /^\d+$/.test(weeksMatch[1]) ? Number(weeksMatch[1]) : 1;
         if (w * 7 > postedWithin + (postedWithin >= 7 ? 1 : 0)) return false;
       }
 
-      const daysMatch = textAge.match(/(\d+)\+?\s*(?:days?|d)\s*ago/i);
+      const daysMatch = textAge.match(/(\d+|an?|one)\+?\s*(?:days?|d)\s*ago/i);
       if (daysMatch) {
-        const d = Number(daysMatch[1]);
+        const d = /^\d+$/.test(daysMatch[1]) ? Number(daysMatch[1]) : 1;
         if (d > postedWithin + (postedWithin === 1 ? 0.5 : 0)) return false;
       }
     }
@@ -290,6 +290,9 @@ function keep(job, plan, postedWithin) {
       const bufferDays = postedWithin === 1 ? 0.5 : postedWithin <= 7 ? 0.5 : 2;
       const cutoff = Date.now() - (postedWithin + bufferDays) * DAY;
       if (postDate.getTime() < cutoff) return false;
+    } else if (!textAge && postedWithin <= 3) {
+      // For tight windows like 24h or 3 days, do not include jobs with no verifiable date
+      return false;
     }
   }
 
@@ -341,7 +344,7 @@ function rank(job, plan) {
   return t / DAY + contact * 2 + verified + edu + titleExact + (job.origin === 'portal' ? 3 : 0);
 }
 
-export async function searchJobs(input, log = () => {}) {
+export async function searchJobs(input, log = () => { }) {
   const started = Date.now();
   const deadline = started + env.jobSearchBudgetMs;
   const plan = await planJobQuery(input);

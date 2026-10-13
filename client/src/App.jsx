@@ -3,6 +3,7 @@ import Layout from './components/Layout.jsx';
 import { useAuth } from './lib/auth.jsx';
 import Admin from './pages/Admin.jsx';
 import Jobs from './pages/Jobs.jsx';
+import Landing from './pages/Landing.jsx';
 import Login from './pages/Login.jsx';
 import Master from './pages/Master.jsx';
 
@@ -16,9 +17,30 @@ function Protected({ children, admin = false, master = false }) {
 }
 
 export default function App() {
+  const { user, loading } = useAuth();
+
   return (
     <Routes>
+      <Route path="/landing" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+
+      {/* Root route: Landing for guests, Jobs for logged in users */}
+      <Route
+        path="/"
+        element={
+          loading ? (
+            <div className="p-10 text-center text-slate-500">Loading…</div>
+          ) : user ? (
+            <Layout />
+          ) : (
+            <Landing />
+          )
+        }
+      >
+        {user && <Route index element={<Jobs />} />}
+      </Route>
+
+      {/* Protected routes */}
       <Route
         element={
           <Protected>
@@ -26,8 +48,7 @@ export default function App() {
           </Protected>
         }
       >
-        <Route index element={<Jobs />} />
-        <Route path="jobs" element={<Navigate to="/" replace />} />
+        <Route path="jobs" element={<Jobs />} />
         <Route
           path="admin"
           element={
@@ -45,7 +66,8 @@ export default function App() {
           }
         />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={user ? "/" : "/landing"} replace />} />
     </Routes>
   );
 }
+

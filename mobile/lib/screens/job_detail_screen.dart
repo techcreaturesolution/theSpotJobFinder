@@ -125,7 +125,12 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
           _row('Experience', j.experienceText),
           _row('Salary', j.salary),
           _row('Employment type', j.employmentType),
-          _row('Posted', j.postedAt == null ? '' : shortDate(j.postedAt)),
+          _row(
+            'Posted',
+            j.postedAt != null
+                ? shortDate(j.postedAt)
+                : (j.postedText.isNotEmpty ? j.postedText : '—'),
+          ),
           _row(
             'Last date to apply',
             j.validThrough == null ? '' : shortDate(j.validThrough),

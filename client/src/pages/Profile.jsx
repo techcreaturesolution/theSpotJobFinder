@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
 import { CITIES_BY_STATE } from '../lib/india.js';
+import CustomSelect from '../components/CustomSelect.jsx';
 
 export default function Profile() {
   const { user, updateUser, login } = useAuth();
@@ -110,12 +111,12 @@ export default function Profile() {
         </label>
         <label className="text-sm">
           State
-          <select className="input mt-1" value={form.state} onChange={set('state')} required>
+          <CustomSelect className="input mt-1" value={form.state} onChange={set('state')}>
             <option value="">Select state</option>
             {meta?.states.map((s) => (
               <option key={s}>{s}</option>
             ))}
-          </select>
+          </CustomSelect>
         </label>
         <label className="text-sm">
           City
@@ -161,7 +162,7 @@ export default function Profile() {
         {!employer && (
           <label className="text-sm">
             Highest education
-          <select className="input mt-1" value={form.education} onChange={set('education')} required>
+          <CustomSelect className="input mt-1" value={form.education} onChange={set('education')}>
             <option value="">Select education</option>
             {meta?.education
               .filter((e) => e.key !== 'any')
@@ -170,7 +171,7 @@ export default function Profile() {
                   {e.label}
                 </option>
               ))}
-          </select>
+          </CustomSelect>
           </label>
         )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 sm:col-span-2">{error}</div>}

@@ -46,7 +46,12 @@ class _SearchScreenState extends State<SearchScreen> {
       final search = JobSearch.fromJson(data['search'] as Map<String, dynamic>);
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => SearchRunScreen(searchId: search.id)),
+        MaterialPageRoute(
+          builder: (_) => SearchRunScreen(
+            searchId: search.id,
+            initialPostedWithin: _postedWithin,
+          ),
+        ),
       );
     } on ApiException catch (e) {
       setState(() => _error = e.message);

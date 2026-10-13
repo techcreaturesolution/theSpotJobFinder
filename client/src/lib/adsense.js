@@ -7,7 +7,7 @@ export function getAdsenseConfig() {
   if (!configPromise) {
     const base = import.meta.env.VITE_API_URL || '';
     configPromise = axios
-      .get(`${base}/api/adsense/config`)
+      .get(`${base}/api/adsense/config`, { timeout: 3000 })
       .then((r) => r.data)
       .catch(() => ({ client: null, slots: {}, testMode: false, demo: true }));
   }

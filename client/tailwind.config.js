@@ -27,6 +27,11 @@ export default {
           900: '#0b1c30',
         },
       },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        heading: ['"Clash Display"', '"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        serif: ['"Instrument Serif"', '"Playfair Display"', 'Georgia', 'serif'],
+      },
     },
   },
   plugins: [],

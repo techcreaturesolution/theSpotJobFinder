@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
 import { detailsMsg, jobBody, toDate } from '../lib/jobForm.js';
+import CustomSelect from './CustomSelect.jsx';
 
 export default function JobForm({ initial, meta, onSaved, onCancel, endpoint = '/admin/jobs', employer = false }) {
   const [form, setForm] = useState(initial);
@@ -52,33 +53,33 @@ export default function JobForm({ initial, meta, onSaved, onCancel, endpoint = '
       )}
       <label className="text-sm">
         Category
-        <select className="input mt-1" value={form.category} onChange={set('category')}>
+        <CustomSelect className="input mt-1" value={form.category} onChange={set('category')}>
           {meta?.categories.map((c) => (
             <option key={c.key} value={c.key}>
               {c.label}
             </option>
           ))}
-        </select>
+        </CustomSelect>
       </label>
       <label className="text-sm">
         Fresher / experienced
-        <select className="input mt-1" value={form.level || ''} onChange={set('level')}>
+        <CustomSelect className="input mt-1" value={form.level || ''} onChange={set('level')}>
           <option value="fresher">Fresher</option>
           <option value="experienced">Experienced</option>
           <option value="">Both</option>
-        </select>
+        </CustomSelect>
       </label>
       {field('experienceText', 'Experience (e.g. 0-1 years)')}
       {field('salary', 'Salary (e.g. ₹15,000 - ₹25,000 / month)')}
       <div className="text-sm md:col-span-3">
         Education qualification
-        <div className="mt-1 flex flex-wrap gap-1">
+        <div className="mt-1 flex flex-wrap gap-1.5">
           {meta?.education.map((c) => (
             <button
               key={c.key}
               type="button"
               onClick={() => toggleEdu(c.key)}
-              className={`badge ${form.education.includes(c.key) ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`badge transition-all ${form.education.includes(c.key) ? 'bg-[#6355d8] text-white shadow-sm' : 'bg-[#faf8ff] text-slate-600 border border-[#f0eaff] hover:bg-[#ede9fe]'}`}
             >
               {c.label}
             </button>
@@ -91,12 +92,12 @@ export default function JobForm({ initial, meta, onSaved, onCancel, endpoint = '
       </label>
       <label className="text-sm">
         State
-        <select className="input mt-1" value={form.state} onChange={set('state')} required={employer}>
+        <CustomSelect className="input mt-1" value={form.state} onChange={set('state')}>
           <option value="">—</option>
           {meta?.states.map((st) => (
             <option key={st}>{st}</option>
           ))}
-        </select>
+        </CustomSelect>
       </label>
       {field('city', 'City', { required: employer })}
       {field('employmentType', 'Job type')}

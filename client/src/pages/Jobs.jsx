@@ -1,7 +1,8 @@
-  import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import GoogleAd from '../components/GoogleAd.jsx';
 import JobsTable from '../components/JobsTable.jsx';
 import VideoAdGate from '../components/VideoAdGate.jsx';
+import CustomSelect from '../components/CustomSelect.jsx';
 import { api, errMsg } from '../lib/api.js';
 import { ALL_CITIES, CITIES_BY_STATE, stateOfCity } from '../lib/india.js';
 
@@ -158,10 +159,10 @@ export default function Jobs() {
         }
         const text = String(j.postedText || '').toLowerCase().trim();
         if (!postTime && text) {
-          const m = text.match(/(\d+)\+?\s*(?:(d|days?)|(w|weeks?)|(mo|months?)|(h|hours?))\s*ago/);
+          const m = text.match(/(\d+|an?|one)\+?\s*(?:(d|days?)|(w|weeks?)|(mo|months?)|(h|hours?|hr)|(m|min|minutes?))\s*ago/);
           if (m) {
-            const num = Number(m[1]);
-            const unit = m[2] ? DAY : m[3] ? 7 * DAY : m[4] ? 30 * DAY : 3600_000;
+            const num = /^\d+$/.test(m[1]) ? Number(m[1]) : 1;
+            const unit = m[2] ? DAY : m[3] ? 7 * DAY : m[4] ? 30 * DAY : m[5] ? 3600_000 : 60_000;
             postTime = now - num * unit;
           } else if (/today|just (?:now|posted)/.test(text)) {
             postTime = now;
@@ -175,12 +176,21 @@ export default function Jobs() {
           const cutoff = now - (filter.postedWithin + bufferDays) * DAY;
           if (postTime < cutoff) return false;
         } else if (text) {
-          const dMatch = text.match(/(\d+)\+?\s*(?:days?|d)\s*ago/);
-          if (dMatch && Number(dMatch[1]) > filter.postedWithin + (filter.postedWithin === 1 ? 0.5 : 0)) return false;
-          const wMatch = text.match(/(\d+)\+?\s*(?:weeks?|w)\s*ago/);
-          if (wMatch && Number(wMatch[1]) * 7 > filter.postedWithin) return false;
-          const mMatch = text.match(/(\d+)\+?\s*(?:months?|mo)\s*ago/);
-          if (mMatch && Number(mMatch[1]) * 30 > filter.postedWithin) return false;
+          if (/years?\s*ago|\b\d+\s*y\s*ago/i.test(text)) return false;
+          const dMatch = text.match(/(\d+|an?|one)\+?\s*(?:days?|d)\s*ago/);
+          const dVal = dMatch ? (/^\d+$/.test(dMatch[1]) ? Number(dMatch[1]) : 1) : null;
+          if (dVal !== null && dVal > filter.postedWithin + (filter.postedWithin === 1 ? 0.5 : 0)) return false;
+
+          const wMatch = text.match(/(\d+|an?|one)\+?\s*(?:weeks?|w)\s*ago/);
+          const wVal = wMatch ? (/^\d+$/.test(wMatch[1]) ? Number(wMatch[1]) : 1) : null;
+          if (wVal !== null && wVal * 7 > filter.postedWithin) return false;
+
+          const mMatch = text.match(/(\d+|an?|one)\+?\s*(?:months?|mo)\s*ago/);
+          const mVal = mMatch ? (/^\d+$/.test(mMatch[1]) ? Number(mMatch[1]) : 1) : null;
+          if (mVal !== null && mVal * 30 > filter.postedWithin) return false;
+        } else if (filter.postedWithin <= 3) {
+          // Exclude undated jobs for tight date windows like 24h or 3 days
+          return false;
         }
       }
 
@@ -202,8 +212,8 @@ export default function Jobs() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">New Jobs</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-2xl font-black tracking-tight text-[#1e1b4b]">New Jobs</h1>
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
           Fresh jobs from Google Jobs, company career pages, Naukri, Indeed, LinkedIn, Apna, WorkIndia, Internshala, X and other public sources across India, each checked against the original posting.
         </p>
       </div>
@@ -214,28 +224,28 @@ export default function Jobs() {
             ['fresher', 'I am a Fresher'],
             ['experienced', 'I am Experienced'],
           ].map(([k, l]) => (
-            <label key={k} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${form.level === k ? 'border-[#3730a3] bg-gradient-to-r from-[#3730a3] to-[#2563eb] text-white shadow-sm font-semibold' : 'border-[#e0e7ff] bg-white text-slate-700 hover:bg-[#eef2ff] hover:text-[#3730a3] hover:border-[#c7d2fe]'}`}>
+            <label key={k} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${form.level === k ? 'border-transparent bg-[#6355d8] text-white shadow-md shadow-indigo-500/20 font-bold' : 'border-purple-200 bg-white text-slate-700 hover:bg-[#ede9fe] hover:text-[#6355d8]'}`}>
               <input type="radio" name="level" value={k} checked={form.level === k} onChange={set('level')} className="sr-only" />
               {l}
             </label>
           ))}
         </div>
         <div>
-          <label htmlFor="job-prompt" className="text-sm font-medium text-[#0b1c30]">
+          <label htmlFor="job-prompt" className="text-sm font-bold text-[#1e1b4b]">
             What job are you looking for?
           </label>
           <textarea
             id="job-prompt"
-            className="input mt-1 text-base"
+            className="input mt-1.5 text-base"
             rows={2}
             maxLength={200}
             placeholder={`e.g. ${EXAMPLES[form.level][0]}`}
             value={form.prompt}
             onChange={set('prompt')}
           />
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {EXAMPLES[form.level].map((x) => (
-              <button key={x} type="button" className="badge border border-[#e0e7ff] bg-[#f8f9ff] text-[#3730a3] transition hover:bg-[#eef2ff] hover:text-[#1e1b4b] hover:border-[#c7d2fe]" onClick={() => setForm((f) => ({ ...f, prompt: x }))}>
+              <button key={x} type="button" className="badge border border-purple-100 bg-[#f8f5ff] text-[#6355d8] transition hover:bg-[#ede9fe] hover:text-[#1e1b4b] font-medium" onClick={() => setForm((f) => ({ ...f, prompt: x }))}>
                 {x}
               </button>
             ))}
@@ -244,34 +254,34 @@ export default function Jobs() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-sm">
             Category
-            <select className="input mt-1" value={form.category} onChange={set('category')}>
+            <CustomSelect className="input mt-1" value={form.category} onChange={set('category')}>
               <option value="">All categories</option>
               {meta?.categories.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
           <label className="text-sm">
             Education qualification
-            <select className="input mt-1" value={form.education} onChange={set('education')}>
+            <CustomSelect className="input mt-1" value={form.education} onChange={set('education')}>
               <option value="">Any education</option>
               {meta?.education.map((c) => (
                 <option key={c.key} value={c.key}>
                   {c.label}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
           <label className="text-sm">
             State
-            <select className="input mt-1" value={form.state} onChange={set('state')}>
+            <CustomSelect className="input mt-1" value={form.state} onChange={set('state')}>
               <option value="">All India</option>
               {meta?.states.map((s) => (
                 <option key={s}>{s}</option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
           <label className="text-sm">
             City
@@ -284,13 +294,13 @@ export default function Jobs() {
           </label>
           <label className="text-sm">
             Posted
-            <select className="input mt-1" value={form.postedWithin} onChange={set('postedWithin')}>
+            <CustomSelect className="input mt-1" value={form.postedWithin} onChange={set('postedWithin')}>
               {(meta?.postedWithin || [1, 3, 7, 30, 0]).map((d) => (
                 <option key={d} value={d}>
                   {POSTED_LABEL[d]}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -298,7 +308,11 @@ export default function Jobs() {
             <input type="checkbox" checked={form.verifiedOnly} onChange={set('verifiedOnly')} />
             Show only verified jobs (confirmed on the original posting)
           </label>
-          <button className="btn-primary px-6" disabled={submitting || searching || !meta}>
+          <button
+            type="submit"
+            className="cursor-pointer rounded-full border border-transparent px-6 py-2 text-sm font-bold bg-[#6355d8] text-white shadow-md shadow-indigo-500/20 transition hover:bg-[#5243d2] disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={submitting || searching || !meta}
+          >
             {submitting || searching ? 'Searching…' : 'Find jobs'}
           </button>
         </div>
@@ -342,26 +356,26 @@ export default function Jobs() {
                 {result.search.hiddenUnverified > 0 && ` · ${result.search.hiddenUnverified} unverified listings hidden`}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input className="input w-40" placeholder="Filter results…" value={filter.text} onChange={(e) => setFilter((f) => ({ ...f, text: e.target.value }))} />
-              <select className="input w-36" value={filter.platform} onChange={(e) => setFilter((f) => ({ ...f, platform: e.target.value }))}>
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <input className="input flex-1 min-w-[140px] sm:w-40" placeholder="Filter results…" value={filter.text} onChange={(e) => setFilter((f) => ({ ...f, text: e.target.value }))} />
+              <CustomSelect className="input flex-1 min-w-[130px] sm:w-36" value={filter.platform} onChange={(e) => setFilter((f) => ({ ...f, platform: e.target.value }))}>
                 <option value="">All sources</option>
                 {platforms.map((p) => (
                   <option key={p}>{p}</option>
                 ))}
-              </select>
-              <select className="input w-36" value={filter.postedWithin} onChange={(e) => setFilter((f) => ({ ...f, postedWithin: Number(e.target.value) }))} title="Filter loaded jobs by posting date">
+              </CustomSelect>
+              <CustomSelect className="input flex-1 min-w-[130px] sm:w-36" value={filter.postedWithin} onChange={(e) => setFilter((f) => ({ ...f, postedWithin: Number(e.target.value) }))} title="Filter loaded jobs by posting date">
                 <option value={0}>All dates</option>
                 <option value={1}>Last 24 hours</option>
                 <option value={3}>Last 3 days</option>
                 <option value={7}>Last 7 days</option>
                 <option value={30}>Last 30 days</option>
-              </select>
-              <select className="input w-32" value={filter.sortBy} onChange={(e) => setFilter((f) => ({ ...f, sortBy: e.target.value }))} title="Sort order">
+              </CustomSelect>
+              <CustomSelect className="input flex-1 min-w-[130px] sm:w-32" value={filter.sortBy} onChange={(e) => setFilter((f) => ({ ...f, sortBy: e.target.value }))} title="Sort order">
                 <option value="newest">Newest first</option>
                 <option value="relevance">Best match</option>
-              </select>
-              <label className="flex items-center gap-1 text-sm text-slate-600">
+              </CustomSelect>
+              <label className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-600 font-medium whitespace-nowrap py-1">
                 <input type="checkbox" checked={filter.contact} onChange={(e) => setFilter((f) => ({ ...f, contact: e.target.checked }))} /> Has contact
               </label>
             </div>

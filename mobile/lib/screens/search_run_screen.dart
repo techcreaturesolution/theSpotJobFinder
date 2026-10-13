@@ -10,8 +10,13 @@ import '../widgets/jobs_table.dart';
 import 'video_ad_gate.dart';
 
 class SearchRunScreen extends StatefulWidget {
-  const SearchRunScreen({super.key, required this.searchId});
+  const SearchRunScreen({
+    super.key,
+    required this.searchId,
+    this.initialPostedWithin,
+  });
   final String searchId;
+  final int? initialPostedWithin;
 
   @override
   State<SearchRunScreen> createState() => _SearchRunScreenState();
@@ -22,10 +27,14 @@ class _SearchRunScreenState extends State<SearchRunScreen> {
   List<Job> _items = const [];
   String _error = '';
   Timer? _poll;
+  late int _filterPostedWithin;
+  String _filterQuery = '';
+  final _queryController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _filterPostedWithin = widget.initialPostedWithin ?? 0;
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
   }
@@ -33,7 +42,23 @@ class _SearchRunScreenState extends State<SearchRunScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _queryController.dispose();
     super.dispose();
+  }
+
+  List<Job> get _filteredJobs {
+    final q = _filterQuery.trim().toLowerCase();
+    return _items.where((j) {
+      if (_filterPostedWithin > 0 && !j.matchesPostedWithin(_filterPostedWithin)) {
+        return false;
+      }
+      if (q.isNotEmpty) {
+        final content =
+            '${j.title} ${j.companyName} ${j.location} ${j.description}'.toLowerCase();
+        if (!content.contains(q)) return false;
+      }
+      return true;
+    }).toList();
   }
 
   Future<void> _refresh() async {
@@ -51,6 +76,9 @@ class _SearchRunScreenState extends State<SearchRunScreen> {
         _search = search;
         _items = items;
         _error = '';
+        if (_filterPostedWithin == 0 && search.postedWithin > 0 && widget.initialPostedWithin == null) {
+          _filterPostedWithin = search.postedWithin;
+        }
       });
       if (!search.running && !search.locked) _poll?.cancel();
     } on ApiException catch (e) {
@@ -99,7 +127,78 @@ class _SearchRunScreenState extends State<SearchRunScreen> {
         ),
       );
     } else {
-      body = JobsTable(jobs: _items, hiddenUnverified: s.hiddenUnverified);
+      final filtered = _filteredJobs;
+      body = Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: TextField(
+              controller: _queryController,
+              decoration: InputDecoration(
+                hintText: 'Filter results by keyword…',
+                prefixIcon: const Icon(Icons.filter_list, size: 20),
+                suffixIcon: _filterQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _queryController.clear();
+                          setState(() => _filterQuery = '');
+                        },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _filterQuery = v),
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                for (final opt in const [
+                  (0, 'All dates'),
+                  (1, 'Last 24 hours'),
+                  (3, 'Last 3 days'),
+                  (7, 'Last 7 days'),
+                  (30, 'Last 30 days'),
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(
+                        opt.$2,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _filterPostedWithin == opt.$1
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      selected: _filterPostedWithin == opt.$1,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (selected) {
+                        setState(() {
+                          _filterPostedWithin = selected ? opt.$1 : 0;
+                        });
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: JobsTable(jobs: filtered, hiddenUnverified: s.hiddenUnverified),
+          ),
+        ],
+      );
     }
     return Scaffold(
       appBar: AppBar(
