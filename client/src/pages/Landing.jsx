@@ -31,6 +31,30 @@ export default function Landing() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const scrollToSection = (targetId) => {
+    const id = targetId.replace(/^#/, '');
+    const element = document.getElementById(id);
+    if (element) {
+      const headerOffset = 85;
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (window.location.hash) {
+      const hash = window.location.hash.replace('#', '');
+      window.history.replaceState(null, '', window.location.pathname);
+      setTimeout(() => {
+        scrollToSection(hash);
+      }, 100);
+    }
+  }, []);
+
   const handleAction = () => {
     if (user) {
       navigate('/');
@@ -208,20 +232,21 @@ export default function Landing() {
           {/* Navigation Links with Bottom Underline on Hover (Desktop) */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
             {[
-              { name: 'Home', href: '#home' },
-              { name: 'About Us', href: '#about' },
-              { name: 'How It Works', href: '#how-it-works' },
-              { name: 'Categories', href: '#categories' },
-              { name: 'Testimonials', href: '#reviews' },
+              { name: 'Home', target: 'home' },
+              { name: 'About Us', target: 'about' },
+              { name: 'How It Works', target: 'how-it-works' },
+              { name: 'Categories', target: 'categories' },
+              { name: 'Testimonials', target: 'reviews' },
             ].map((item) => (
-              <a
+              <button
                 key={item.name}
-                href={item.href}
-                className="group relative py-1 text-slate-600 transition-colors duration-200"
+                type="button"
+                onClick={() => scrollToSection(item.target)}
+                className="group relative py-1 text-slate-600 transition-colors duration-200 cursor-pointer"
               >
                 <span className="transition-colors duration-200 group-hover:text-[#1e1b4b]">{item.name}</span>
                 <span className="absolute bottom-0 left-0 h-[2.5px] w-0 bg-[#1e1b4b] rounded-full transition-all duration-300 ease-out group-hover:w-full" />
-              </a>
+              </button>
             ))}
           </nav>
 
@@ -262,21 +287,24 @@ export default function Landing() {
           <div className="md:hidden border-t border-[#f0eaff] bg-[#faf8ff]/98 px-5 pt-3 pb-5 shadow-2xl backdrop-blur-xl">
             <nav className="flex flex-col space-y-2">
               {[
-                { name: 'Home', href: '#home' },
-                { name: 'About Us', href: '#about' },
-                { name: 'How It Works', href: '#how-it-works' },
-                { name: 'Categories', href: '#categories' },
-                { name: 'Testimonials', href: '#reviews' },
+                { name: 'Home', target: 'home' },
+                { name: 'About Us', target: 'about' },
+                { name: 'How It Works', target: 'how-it-works' },
+                { name: 'Categories', target: 'categories' },
+                { name: 'Testimonials', target: 'reviews' },
               ].map((item) => (
-                <a
+                <button
                   key={item.name}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-[#ede9fe] hover:text-[#6355d8] transition flex items-center justify-between"
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    scrollToSection(item.target);
+                  }}
+                  className="w-full text-left rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-[#ede9fe] hover:text-[#6355d8] transition flex items-center justify-between cursor-pointer"
                 >
                   <span>{item.name}</span>
                   <span className="text-slate-400 text-xs">→</span>
-                </a>
+                </button>
               ))}
             </nav>
           </div>
@@ -934,11 +962,11 @@ export default function Landing() {
                 Navigation
               </h3>
               <ul className="space-y-2 text-xs text-slate-500">
-                <li><a href="#home" className="hover:text-[#6355d8] transition">Home</a></li>
-                <li><a href="#categories" className="hover:text-[#6355d8] transition">Categories</a></li>
-                <li><a href="#about" className="hover:text-[#6355d8] transition">About Us</a></li>
-                <li><a href="#how-it-works" className="hover:text-[#6355d8] transition">How It Works</a></li>
-                <li><a href="#reviews" className="hover:text-[#6355d8] transition">Testimonials</a></li>
+                <li><button type="button" onClick={() => scrollToSection('home')} className="hover:text-[#6355d8] transition cursor-pointer">Home</button></li>
+                <li><button type="button" onClick={() => scrollToSection('categories')} className="hover:text-[#6355d8] transition cursor-pointer">Categories</button></li>
+                <li><button type="button" onClick={() => scrollToSection('about')} className="hover:text-[#6355d8] transition cursor-pointer">About Us</button></li>
+                <li><button type="button" onClick={() => scrollToSection('how-it-works')} className="hover:text-[#6355d8] transition cursor-pointer">How It Works</button></li>
+                <li><button type="button" onClick={() => scrollToSection('reviews')} className="hover:text-[#6355d8] transition cursor-pointer">Testimonials</button></li>
               </ul>
             </div>
 

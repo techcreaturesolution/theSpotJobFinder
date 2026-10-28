@@ -35,6 +35,58 @@ const hostOf = (u) => {
   }
 };
 
+function CompanyLogo({ logo, companyName, companyWebsite, size = 'h-8 w-8' }) {
+  const domain = companyWebsite ? hostOf(companyWebsite) : null;
+  const [failedLogo, setFailedLogo] = useState(false);
+  const [failedFavicon, setFailedFavicon] = useState(false);
+
+  const initial = (companyName || 'C').trim().charAt(0).toUpperCase() || 'C';
+
+  const colorSchemes = [
+    'bg-indigo-50 text-indigo-700 border-indigo-200',
+    'bg-purple-50 text-purple-700 border-purple-200',
+    'bg-blue-50 text-blue-700 border-blue-200',
+    'bg-teal-50 text-teal-700 border-teal-200',
+    'bg-rose-50 text-rose-700 border-rose-200',
+    'bg-amber-50 text-amber-700 border-amber-200',
+  ];
+  const charCodeSum = (companyName || '').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const colorClass = colorSchemes[charCodeSum % colorSchemes.length];
+
+  if (logo && !failedLogo) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        className={`${size} shrink-0 rounded object-contain bg-white border border-[#e0e7ff] p-0.5 shadow-xs`}
+        referrerPolicy="no-referrer"
+        onError={() => setFailedLogo(true)}
+      />
+    );
+  }
+
+  if (domain && !failedFavicon) {
+    return (
+      <img
+        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+        alt=""
+        className={`${size} shrink-0 rounded object-contain bg-white border border-[#e0e7ff] p-0.5 shadow-xs`}
+        referrerPolicy="no-referrer"
+        onError={() => setFailedFavicon(true)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${size} shrink-0 rounded grid place-items-center text-xs font-bold border shadow-xs ${colorClass}`}
+      title={companyName}
+    >
+      {initial}
+    </div>
+  );
+}
+
 function cleanDescription(desc) {
   if (!desc) return '';
   if (!/<[a-z][\s\S]*>/i.test(desc)) return desc;
@@ -194,18 +246,12 @@ export default function JobsTable({ items, educationLabels = [] }) {
             >
               <div className="flex items-start justify-between gap-2.5">
                 <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                  {j.logo ? (
-                    <img
-                      src={j.logo}
-                      alt=""
-                      className="h-9 w-9 shrink-0 rounded-lg object-contain bg-slate-50 border border-purple-100 p-0.5"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#ede9fe] text-xs font-bold text-[#6355d8]">
-                      {j.companyName?.[0]?.toUpperCase() || 'J'}
-                    </div>
-                  )}
+                  <CompanyLogo
+                    logo={j.logo}
+                    companyName={j.companyName}
+                    companyWebsite={j.companyWebsite}
+                    size="h-9 w-9"
+                  />
                   <div className="min-w-0 flex-1">
                     <button
                       type="button"
@@ -399,7 +445,12 @@ export default function JobsTable({ items, educationLabels = [] }) {
                     </td>
                     <td className="td min-w-[180px]">
                       <div className="flex items-start gap-2">
-                        {j.logo && <img src={j.logo} alt="" className="h-8 w-8 shrink-0 rounded object-contain bg-stone-50 border border-[#e0e7ff] p-0.5" referrerPolicy="no-referrer" />}
+                        <CompanyLogo
+                          logo={j.logo}
+                          companyName={j.companyName}
+                          companyWebsite={j.companyWebsite}
+                          size="h-8 w-8"
+                        />
                         <div>
                           <div className="font-semibold text-[#0b1c30]">{j.companyName || '—'}</div>
                           {j.address && <div className="text-xs text-slate-500">{j.address}</div>}

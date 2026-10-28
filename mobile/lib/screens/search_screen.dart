@@ -24,7 +24,7 @@ class _SearchScreenState extends State<SearchScreen> {
   int _postedWithin = 30;
   bool _verifiedOnly = true;
   bool _busy = false;
-  String _error = '';
+    String _error = '';
 
   Future<void> _search() async {
     final app = AppScope.of(context);
